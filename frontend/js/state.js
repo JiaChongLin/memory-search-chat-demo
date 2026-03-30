@@ -21,8 +21,8 @@ const state = {
   backendBaseUrl: persisted.backendBaseUrl || DEFAULT_BACKEND_BASE_URL,
   currentProjectId: persisted.currentProjectId,
   currentSessionId: persisted.currentSessionId,
-  summaryMap: persisted.summaryMap || {},
-  messageMap: persisted.messageMap || {},
+  summaryMap: {},
+  messageMap: {},
   chatDebugMap: {},
   projects: [],
   sessions: [],
@@ -88,8 +88,6 @@ function persist() {
     backendBaseUrl: state.backendBaseUrl,
     currentProjectId: state.currentProjectId,
     currentSessionId: state.currentSessionId,
-    summaryMap: state.summaryMap,
-    messageMap: state.messageMap,
     sidebar: buildPersistedSidebarState(),
   });
 }
