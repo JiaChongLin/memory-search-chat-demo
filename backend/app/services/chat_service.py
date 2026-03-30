@@ -28,11 +28,8 @@ class ChatService:
 
     def handle_chat(self, payload: ChatRequest) -> ChatResponse:
         session_id = payload.session_id or self._create_session_id()
+        resolved_context = self._memory_service.resolve_context(session_id)
 
-        recent_messages = self._memory_service.get_recent_messages(session_id)
-        session_summary = self._memory_service.get_summary(session_id)
-
-        # 是否触发搜索仍由独立服务判断，保持编排层轻量。
         search_triggered = self._search_service.should_search(payload.message)
         search_results = (
             self._search_service.search(payload.message) if search_triggered else []
@@ -40,8 +37,8 @@ class ChatService:
 
         llm_reply = self._llm_service.generate_reply(
             user_message=payload.message,
-            history=recent_messages,
-            session_summary=session_summary,
+            history=resolved_context.recent_messages,
+            session_summary=resolved_context.context_summary,
             search_results=search_results,
         )
 
@@ -67,6 +64,8 @@ class ChatService:
                 )
                 for result in search_results
             ],
+            context_scope=resolved_context.context_scope,
+            related_summary_count=len(resolved_context.related_summaries),
         )
 
     def _create_session_id(self) -> str:
@@ -76,7 +75,6 @@ class ChatService:
 def get_chat_service(db: Session = Depends(get_db)) -> ChatService:
     settings = get_settings()
 
-    # 每个请求绑定自己的数据库会话，避免把 Session 做成全局单例。
     memory_service = MemoryService(
         db=db,
         short_window=settings.memory_short_window,

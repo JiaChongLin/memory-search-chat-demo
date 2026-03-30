@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 import backend.app.main as main_module
 from backend.app.core.config import Settings
 from backend.app.db.models import Base
+from backend.app.db.session import get_db
 from backend.app.main import app
 from backend.app.services.chat_service import ChatService, get_chat_service
 from backend.app.services.llm_service import LLMService
@@ -72,7 +73,15 @@ def client(monkeypatch):
         finally:
             db.close()
 
+    def override_db():
+        db = testing_session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
     app.dependency_overrides[get_chat_service] = override_chat_service
+    app.dependency_overrides[get_db] = override_db
 
     with TestClient(app) as test_client:
         yield test_client
@@ -94,6 +103,8 @@ def test_chat_first_request_returns_session_and_reply(client: TestClient) -> Non
     assert data["fallback_reason"] == "missing_api_key"
     assert data["search_used"] is False
     assert isinstance(data["sources"], list)
+    assert data["context_scope"] == "conversation_only"
+    assert data["related_summary_count"] == 0
 
 
 def test_chat_reuses_existing_session(client: TestClient) -> None:
@@ -112,6 +123,8 @@ def test_chat_reuses_existing_session(client: TestClient) -> None:
     second_data = second_response.json()
     assert second_data["session_id"] == first_data["session_id"]
     assert second_data["reply"]
+    assert second_data["context_scope"] == "conversation_only"
+    assert second_data["related_summary_count"] == 0
 
 
 def test_chat_returns_search_sources_when_search_hits(
@@ -139,3 +152,4 @@ def test_chat_returns_search_sources_when_search_hits(
     assert data["search_triggered"] is True
     assert data["search_used"] is True
     assert data["sources"][0]["title"] == "Example News"
+    assert data["context_scope"] == "conversation_only"
