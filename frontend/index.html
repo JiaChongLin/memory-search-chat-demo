@@ -13,7 +13,9 @@
           <div class="sidebar-brand">
             <p class="eyebrow">Stage 3</p>
             <h1>Memory Search</h1>
-            <p class="sidebar-copy">项目、会话和权限规则的 Web 测试控制台。</p>
+            <p class="sidebar-copy">
+              用一个纯静态前端，把项目边界、会话可见性、聊天上下文和调试信息放到同一页里做联调。
+            </p>
           </div>
 
           <div id="globalNotice" class="notice hidden"></div>
@@ -22,9 +24,17 @@
             <button id="newChatButton" class="primary-button sidebar-action-button" type="button">
               新聊天
             </button>
-            <button id="searchChatsButton" class="ghost-button sidebar-action-button" type="button">
+            <button
+              id="searchChatsButton"
+              class="ghost-button sidebar-action-button is-placeholder"
+              type="button"
+              disabled
+              aria-disabled="true"
+              title="即将支持"
+            >
               搜索聊天
             </button>
+            <p class="sidebar-note compact">搜索聊天即将支持，当前先保留入口占位。</p>
           </div>
           <div id="newChatMenu" class="floating-menu hidden"></div>
         </div>
@@ -39,8 +49,8 @@
 
         <div class="sidebar-footer connection-box">
           <div class="panel-head compact">
-            <h2>后端连接</h2>
-            <span id="healthBadge" class="badge neutral">未检测</span>
+            <h2>连接状态</h2>
+            <span id="healthBadge" class="badge neutral">未检查</span>
           </div>
 
           <label class="field-label" for="backendBaseUrl">后端地址</label>
@@ -54,90 +64,118 @@
             />
           </div>
           <div class="inline-row">
-            <button id="saveConfigButton" class="ghost-button" type="button">保存</button>
-            <button id="checkHealthButton" class="secondary-button" type="button">检查</button>
+            <button id="saveConfigButton" class="ghost-button" type="button">保存配置</button>
+            <button id="checkHealthButton" class="secondary-button" type="button">检查健康</button>
           </div>
 
           <div class="stats-row single-column">
             <div class="stat-card">
-              <span class="stat-label">环境</span>
-              <strong id="environmentValue">未知</strong>
+              <span class="stat-label">运行环境</span>
+              <strong id="environmentValue">未连接</strong>
             </div>
           </div>
         </div>
       </aside>
 
       <main class="main-shell">
-        <header class="main-topbar panel">
-          <div>
-            <p class="eyebrow">Chat</p>
-            <h2>当前聊天主区</h2>
-            <p id="selectionHint" class="selection-hint">请先在左侧导航中选择一个会话。</p>
-          </div>
-
-          <div class="current-selection-grid">
-            <div class="stat-card">
-              <span class="stat-label">当前项目</span>
-              <strong id="currentProjectLabel">未选中</strong>
-            </div>
-            <div class="stat-card">
-              <span class="stat-label">当前会话</span>
-              <strong id="currentSessionLabel">未选中</strong>
-            </div>
-          </div>
-        </header>
-
         <div id="sessionBanner" class="notice hidden"></div>
         <div id="chatNotice" class="notice hidden"></div>
 
-        <section id="sessionDetail"></section>
-
-        <div class="summary-debug-grid">
-          <section class="detail-card summary-card-box">
-            <div class="mini-head">
-              <h3>当前摘要</h3>
-              <span id="summaryBadge" class="badge neutral">无摘要</span>
+        <header class="panel conversation-header">
+          <div class="conversation-header-main">
+            <p class="eyebrow">Chat</p>
+            <div class="conversation-title-row">
+              <h2 id="currentSessionLabel">请选择一个会话</h2>
+              <div class="tag-row conversation-tags">
+                <span id="currentProjectLabel" class="badge soft">无项目</span>
+                <span id="currentVisibilityBadge" class="badge soft">未选择</span>
+                <span id="currentStatusBadge" class="badge neutral">未选择</span>
+              </div>
             </div>
-            <p id="summaryText" class="summary-text">当前没有本地缓存的会话摘要。</p>
-          </section>
-
-          <section class="detail-card debug-card-box">
-            <div class="mini-head">
-              <h3>最近调试信息</h3>
-              <span class="badge soft">聊天返回</span>
-            </div>
-            <dl id="debugInfo" class="debug-grid"></dl>
-            <p id="debugNote" class="hint-text">这里会用新模型语言解释 context_scope、项目访问模式和会话可见性。</p>
-          </section>
-        </div>
-
-        <section class="panel inset-panel quick-panel">
-          <div class="panel-head compact">
-            <h3>快速测试</h3>
+            <p id="selectionHint" class="selection-hint subtle">
+              请先从左侧导航中创建或选择一个会话，然后在这里继续聊天。
+            </p>
           </div>
-          <div class="quick-list">
-            <button class="quick-chip" data-prompt="你好，请介绍一下你当前可访问的上下文。" type="button">查看上下文</button>
-            <button class="quick-chip" data-prompt="请记住：我在项目 A 里讨论新的访问规则。" type="button">写入记忆</button>
-            <button class="quick-chip" data-prompt="现在你能读到多少相关历史？" type="button">观察相关摘要数</button>
-            <button class="quick-chip" data-prompt="today latest ai news" type="button">触发搜索</button>
+
+          <section id="sessionDetail" class="session-side-panel"></section>
+        </header>
+
+        <section class="panel secondary-stack">
+          <details class="secondary-details" open>
+            <summary>会话摘要</summary>
+            <div class="secondary-body">
+              <div class="mini-head">
+                <h3>当前 summary</h3>
+                <span id="summaryBadge" class="badge neutral">无摘要</span>
+              </div>
+              <p id="summaryText" class="summary-text">
+                当前没有选中会话。请选择左侧会话后再观察本地 summary 缓存。
+              </p>
+            </div>
+          </details>
+
+          <details class="secondary-details">
+            <summary>调试信息</summary>
+            <div class="secondary-body">
+              <div class="mini-head">
+                <h3>上下文解析与调用状态</h3>
+                <span class="badge soft">调试可视化</span>
+              </div>
+              <dl id="debugInfo" class="debug-grid"></dl>
+              <p id="debugNote" class="hint-text">
+                这里会继续显示 context_scope，但按当前 access_mode 语义解释，而不是旧四档 scope。
+              </p>
+            </div>
+          </details>
+
+          <div class="quick-strip">
+            <span class="quick-strip-label">快捷测试</span>
+            <div class="quick-list">
+              <button
+                class="quick-chip"
+                data-prompt="请总结一下当前会话可能会读到哪些历史上下文。"
+                type="button"
+              >
+                解释上下文
+              </button>
+              <button
+                class="quick-chip"
+                data-prompt="请比较当前会话与另一个项目中的会话在访问边界上的差异。"
+                type="button"
+              >
+                比较访问边界
+              </button>
+              <button
+                class="quick-chip"
+                data-prompt="请解释 related_summary_count 的含义。"
+                type="button"
+              >
+                解释调试字段
+              </button>
+              <button class="quick-chip" data-prompt="today latest ai news" type="button">
+                触发搜索
+              </button>
+            </div>
           </div>
         </section>
 
-        <section id="messageList" class="message-list" aria-live="polite"></section>
-        <div id="chatEmptyState" class="empty-card chat-empty">当前会话还没有本地渲染消息。切换到已存在会话后，这里只显示当前页面缓存过的消息。</div>
+        <section class="panel chat-thread-shell">
+          <section id="messageList" class="message-list" aria-live="polite"></section>
+          <div id="chatEmptyState" class="empty-card chat-empty"></div>
+        </section>
 
         <form id="composerForm" class="panel composer composer-panel">
-          <label class="field-label" for="messageInput">发送到当前会话</label>
+          <label class="field-label" for="messageInput">发送消息到当前会话</label>
           <textarea
             id="messageInput"
             class="text-area composer-input"
-            rows="5"
+            rows="4"
             maxlength="4000"
-            placeholder="输入消息，观察当前项目访问模式、会话可见性、相关摘要数、搜索状态和模型降级状态。"
+            placeholder="选择会话后，在这里继续聊天。支持多行输入。"
           ></textarea>
           <div class="inline-row composer-actions">
             <span id="composerHint" class="hint-text">Shift + Enter 换行，Enter 发送。</span>
-            <button id="sendButton" class="primary-button" type="submit">发送消息</button>
+            <button id="sendButton" class="primary-button" type="submit">发送</button>
           </div>
         </form>
       </main>
@@ -147,8 +185,10 @@
       <div class="modal-backdrop" data-close-project-modal="true"></div>
       <div class="modal-card">
         <div class="panel-head compact">
-          <h2>创建项目</h2>
-          <button id="closeProjectModalButton" class="icon-button" type="button" aria-label="关闭">×</button>
+          <h2>新建项目</h2>
+          <button id="closeProjectModalButton" class="icon-button" type="button" aria-label="关闭">
+            ×
+          </button>
         </div>
 
         <form id="projectForm" class="form-panel modal-form">
@@ -164,8 +204,12 @@
             <option value="project_only">仅限项目（project_only）</option>
           </select>
 
-          <p class="hint-text">开放项目：可访问外部可访问历史，且自身非私密会话也可被外部访问。</p>
-          <p class="hint-text">仅限项目：只能访问项目内历史，且项目内会话对项目外不可见。</p>
+          <p class="hint-text">
+            开放项目可访问外部可访问历史，且项目内非私密会话也可被外部访问。
+          </p>
+          <p class="hint-text">
+            仅限项目只能访问项目内历史，且项目内会话对项目外不可见。
+          </p>
           <p class="sidebar-note">创建后项目访问模式暂不支持修改。</p>
 
           <button class="primary-button" type="submit">创建项目</button>

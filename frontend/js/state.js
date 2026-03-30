@@ -30,8 +30,8 @@ const state = {
   selectedSessionDetail: null,
   health: {
     status: "idle",
-    label: "未检测",
-    environment: "未知",
+    label: "未检查",
+    environment: "未连接",
   },
   notices: {
     global: null,
@@ -52,6 +52,7 @@ const state = {
         unassigned: Boolean(persisted.sidebar?.collapsedSections?.unassigned),
       },
       showAllProjects: Boolean(persisted.sidebar?.showAllProjects),
+      showAllUnassigned: Boolean(persisted.sidebar?.showAllUnassigned),
       expandedProjectIds: toBooleanMap(persisted.sidebar?.expandedProjectIds),
       expandedProjectSessionIds: toBooleanMap(
         persisted.sidebar?.expandedProjectSessionIds,
@@ -68,6 +69,7 @@ function buildPersistedSidebarState() {
       ...state.ui.sidebar.collapsedSections,
     },
     showAllProjects: state.ui.sidebar.showAllProjects,
+    showAllUnassigned: state.ui.sidebar.showAllUnassigned,
     expandedProjectIds: Object.entries(state.ui.sidebar.expandedProjectIds)
       .filter(([, value]) => value)
       .map(([key]) => Number.parseInt(key, 10))
@@ -167,54 +169,75 @@ export function clearCurrentSessionSelection() {
 }
 
 export function setProjects(projects) {
-  commit((draft) => {
-    draft.projects = Array.isArray(projects) ? projects : [];
-  }, false);
+  commit(
+    (draft) => {
+      draft.projects = Array.isArray(projects) ? projects : [];
+    },
+    false,
+  );
 }
 
 export function setSessions(sessions) {
-  commit((draft) => {
-    draft.sessions = Array.isArray(sessions) ? sessions : [];
-    if (draft.currentSessionId) {
-      const match = draft.sessions.find((item) => item.id === draft.currentSessionId);
-      if (match) {
-        draft.selectedSessionDetail = match;
+  commit(
+    (draft) => {
+      draft.sessions = Array.isArray(sessions) ? sessions : [];
+      if (draft.currentSessionId) {
+        const match = draft.sessions.find((item) => item.id === draft.currentSessionId);
+        if (match) {
+          draft.selectedSessionDetail = match;
+        }
       }
-    }
-  }, false);
+    },
+    false,
+  );
 }
 
 export function setSelectedProjectDetail(project) {
-  commit((draft) => {
-    draft.selectedProjectDetail = project;
-  }, false);
+  commit(
+    (draft) => {
+      draft.selectedProjectDetail = project;
+    },
+    false,
+  );
 }
 
 export function setSelectedSessionDetail(session) {
-  commit((draft) => {
-    draft.selectedSessionDetail = session;
-  }, false);
+  commit(
+    (draft) => {
+      draft.selectedSessionDetail = session;
+    },
+    false,
+  );
 }
 
 export function setHealth(healthPatch) {
-  commit((draft) => {
-    draft.health = {
-      ...draft.health,
-      ...healthPatch,
-    };
-  }, false);
+  commit(
+    (draft) => {
+      draft.health = {
+        ...draft.health,
+        ...healthPatch,
+      };
+    },
+    false,
+  );
 }
 
 export function setBusy(scope, value) {
-  commit((draft) => {
-    draft.busy[scope] = value;
-  }, false);
+  commit(
+    (draft) => {
+      draft.busy[scope] = value;
+    },
+    false,
+  );
 }
 
 export function setNotice(scope, message, variant = "info") {
-  commit((draft) => {
-    draft.notices[scope] = message ? { message, variant } : null;
-  }, false);
+  commit(
+    (draft) => {
+      draft.notices[scope] = message ? { message, variant } : null;
+    },
+    false,
+  );
 }
 
 export function clearNotice(scope) {
@@ -278,20 +301,30 @@ export function setChatDebug(sessionId, debug) {
     return;
   }
 
-  commit((draft) => {
-    draft.chatDebugMap[sessionId] = debug;
-  }, false);
+  commit(
+    (draft) => {
+      draft.chatDebugMap[sessionId] = debug;
+    },
+    false,
+  );
 }
 
 export function toggleSidebarSection(sectionKey) {
   commit((draft) => {
-    draft.ui.sidebar.collapsedSections[sectionKey] = !draft.ui.sidebar.collapsedSections[sectionKey];
+    draft.ui.sidebar.collapsedSections[sectionKey] =
+      !draft.ui.sidebar.collapsedSections[sectionKey];
   });
 }
 
 export function toggleShowAllProjects() {
   commit((draft) => {
     draft.ui.sidebar.showAllProjects = !draft.ui.sidebar.showAllProjects;
+  });
+}
+
+export function toggleShowAllUnassigned() {
+  commit((draft) => {
+    draft.ui.sidebar.showAllUnassigned = !draft.ui.sidebar.showAllUnassigned;
   });
 }
 
@@ -305,18 +338,25 @@ export function toggleProjectExpanded(projectId) {
 export function toggleProjectSessionExpansion(projectId) {
   const key = String(projectId);
   commit((draft) => {
-    draft.ui.sidebar.expandedProjectSessionIds[key] = !draft.ui.sidebar.expandedProjectSessionIds[key];
+    draft.ui.sidebar.expandedProjectSessionIds[key] =
+      !draft.ui.sidebar.expandedProjectSessionIds[key];
   });
 }
 
 export function setProjectModalOpen(isOpen) {
-  commit((draft) => {
-    draft.ui.projectModalOpen = Boolean(isOpen);
-  }, false);
+  commit(
+    (draft) => {
+      draft.ui.projectModalOpen = Boolean(isOpen);
+    },
+    false,
+  );
 }
 
 export function setNewChatMenuOpen(isOpen) {
-  commit((draft) => {
-    draft.ui.newChatMenuOpen = Boolean(isOpen);
-  }, false);
+  commit(
+    (draft) => {
+      draft.ui.newChatMenuOpen = Boolean(isOpen);
+    },
+    false,
+  );
 }
