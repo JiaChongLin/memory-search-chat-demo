@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
-from backend.app.db.models import ChatSession
+from backend.app.db.models import ChatSession, Project, SessionSummary
 from backend.app.domain.constants import (
     PROJECT_ACCESS_OPEN,
     PROJECT_ACCESS_PROJECT_ONLY,
@@ -76,11 +76,19 @@ class ContextResolver:
     def get_accessible_summaries(self, current_session: ChatSession) -> list[RelatedSummary]:
         stmt = (
             select(ChatSession)
+            .join(SessionSummary, ChatSession.id == SessionSummary.session_id)
+            .outerjoin(Project, ChatSession.project_id == Project.id)
             .options(
                 joinedload(ChatSession.project),
                 joinedload(ChatSession.summary),
             )
-            .where(ChatSession.id != current_session.id)
+            .where(
+                ChatSession.id != current_session.id,
+                ChatSession.status == STATUS_ACTIVE,
+                ChatSession.is_private.is_(False),
+                func.length(func.trim(SessionSummary.content)) > 0,
+                or_(Project.id.is_(None), Project.status == STATUS_ACTIVE),
+            )
             .order_by(ChatSession.updated_at.desc(), ChatSession.created_at.desc())
         )
         candidates = list(self._db.scalars(stmt).unique())
@@ -89,10 +97,11 @@ class ContextResolver:
         external_items: list[RelatedSummary] = []
         can_read_external = self._can_read_external(current_session)
 
+        # SQL handles candidate-local filters that do not depend on the current
+        # session. We keep current-session-dependent boundary checks in Python so
+        # the open/project_only semantics and same-project vs external grouping
+        # stay explicit and easy to verify.
         for candidate in candidates:
-            if not self._is_summary_candidate(candidate):
-                continue
-
             if self._is_same_project(current_session, candidate):
                 same_project_items.append(
                     self._to_related_summary(candidate, RELATED_SUMMARY_SOURCE_PROJECT)
@@ -151,17 +160,6 @@ class ContextResolver:
     def _can_read_external(self, current_session: ChatSession) -> bool:
         return self._resolve_context_scope(current_session) == PROJECT_ACCESS_OPEN
 
-    def _is_summary_candidate(self, candidate: ChatSession) -> bool:
-        if candidate.status != STATUS_ACTIVE:
-            return False
-        if candidate.is_private:
-            return False
-        if candidate.summary is None or not candidate.summary.content.strip():
-            return False
-        if candidate.project is not None and candidate.project.status != STATUS_ACTIVE:
-            return False
-        return True
-
     def _is_same_project(self, current_session: ChatSession, candidate: ChatSession) -> bool:
         return (
             current_session.project_id is not None
@@ -197,17 +195,19 @@ class ContextResolver:
         parts: list[str] = []
 
         if current_summary:
-            parts.append(f"当前会话摘要：\n{current_summary}")
+            parts.append(f"\u5f53\u524d\u4f1a\u8bdd\u6458\u8981\uff1a\n{current_summary}")
 
         if related_summaries:
-            lines = ["可访问的相关历史摘要："]
+            lines = ["\u53ef\u8bbf\u95ee\u7684\u76f8\u5173\u5386\u53f2\u6458\u8981\uff1a"]
             for index, item in enumerate(related_summaries, start=1):
                 source_label = (
-                    "同项目"
+                    "\u540c\u9879\u76ee"
                     if item.source_scope == RELATED_SUMMARY_SOURCE_PROJECT
-                    else "外部可访问"
+                    else "\u5916\u90e8\u53ef\u8bbf\u95ee"
                 )
-                lines.append(f"{index}. {source_label}会话 {item.session_id[:8]}：{item.content}")
+                lines.append(
+                    f"{index}. {source_label}\u4f1a\u8bdd {item.session_id[:8]}\uff1a{item.content}"
+                )
             parts.append("\n".join(lines))
 
         combined = "\n\n".join(parts).strip()

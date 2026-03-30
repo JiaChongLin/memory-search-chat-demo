@@ -1,9 +1,6 @@
 export const STORAGE_KEYS = {
-  backendBaseUrl: "memory-search-chat-demo.backendBaseUrl",
   currentProjectId: "memory-search-chat-demo.currentProjectId",
   currentSessionId: "memory-search-chat-demo.currentSessionId",
-  summary: "memory-search-chat-demo.summary",
-  messages: "memory-search-chat-demo.messages",
   sidebar: "memory-search-chat-demo.sidebar",
 };
 
@@ -19,19 +16,6 @@ const DEFAULT_SIDEBAR_STATE = {
   expandedProjectIds: [],
   expandedProjectSessionIds: [],
 };
-
-function readJson(key, fallbackValue) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) {
-      return fallbackValue;
-    }
-    const parsed = JSON.parse(raw);
-    return parsed ?? fallbackValue;
-  } catch {
-    return fallbackValue;
-  }
-}
 
 function parseOptionalInt(rawValue) {
   if (rawValue === null || rawValue === "") {
@@ -65,25 +49,28 @@ function normalizeSidebarState(rawValue) {
 
 export function loadPersistedState() {
   return {
-    backendBaseUrl:
-      localStorage.getItem(STORAGE_KEYS.backendBaseUrl) || DEFAULT_BACKEND_BASE_URL,
+    backendBaseUrl: DEFAULT_BACKEND_BASE_URL,
     currentProjectId: parseOptionalInt(
       localStorage.getItem(STORAGE_KEYS.currentProjectId),
     ),
     currentSessionId: localStorage.getItem(STORAGE_KEYS.currentSessionId),
-    summaryMap: readJson(STORAGE_KEYS.summary, {}),
-    messageMap: readJson(STORAGE_KEYS.messages, {}),
-    sidebar: normalizeSidebarState(readJson(STORAGE_KEYS.sidebar, DEFAULT_SIDEBAR_STATE)),
+    sidebar: normalizeSidebarState(loadSidebarState()),
   };
 }
 
-export function persistStateSnapshot(snapshot) {
-  if (snapshot.backendBaseUrl) {
-    localStorage.setItem(STORAGE_KEYS.backendBaseUrl, snapshot.backendBaseUrl);
-  } else {
-    localStorage.removeItem(STORAGE_KEYS.backendBaseUrl);
+function loadSidebarState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.sidebar);
+    if (!raw) {
+      return DEFAULT_SIDEBAR_STATE;
+    }
+    return JSON.parse(raw) ?? DEFAULT_SIDEBAR_STATE;
+  } catch {
+    return DEFAULT_SIDEBAR_STATE;
   }
+}
 
+export function persistStateSnapshot(snapshot) {
   if (snapshot.currentProjectId === null || snapshot.currentProjectId === undefined) {
     localStorage.removeItem(STORAGE_KEYS.currentProjectId);
   } else {
@@ -100,15 +87,12 @@ export function persistStateSnapshot(snapshot) {
   }
 
   localStorage.setItem(
-    STORAGE_KEYS.summary,
-    JSON.stringify(snapshot.summaryMap || {}),
-  );
-  localStorage.setItem(
-    STORAGE_KEYS.messages,
-    JSON.stringify(snapshot.messageMap || {}),
-  );
-  localStorage.setItem(
     STORAGE_KEYS.sidebar,
     JSON.stringify(snapshot.sidebar || DEFAULT_SIDEBAR_STATE),
   );
+
+  // Drop legacy heavy payloads so refresh recovery depends on session re-fetching instead.
+  localStorage.removeItem("memory-search-chat-demo.backendBaseUrl");
+  localStorage.removeItem("memory-search-chat-demo.summary");
+  localStorage.removeItem("memory-search-chat-demo.messages");
 }

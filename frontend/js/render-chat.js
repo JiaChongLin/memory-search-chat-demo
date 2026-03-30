@@ -229,6 +229,42 @@ function renderNotice(state, elements) {
   elements.chatNotice.textContent = notice.message;
 }
 
+function buildSourceNode(source) {
+  const link = document.createElement("a");
+  link.className = "source-card";
+
+  const title = document.createElement("strong");
+  title.textContent = source?.title || "";
+
+  const snippet = document.createElement("span");
+  snippet.textContent = source?.snippet || source?.url || "";
+
+  link.append(title, snippet);
+
+  const rawUrl = typeof source?.url === "string" ? source.url.trim() : "";
+  if (!rawUrl) {
+    link.setAttribute("aria-disabled", "true");
+    link.tabIndex = -1;
+    return link;
+  }
+
+  try {
+    const parsed = new URL(rawUrl, window.location.origin);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      link.href = parsed.toString();
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      return link;
+    }
+  } catch {
+    // Ignore malformed URLs and fall through to the disabled, non-clickable card.
+  }
+
+  link.setAttribute("aria-disabled", "true");
+  link.tabIndex = -1;
+  return link;
+}
+
 function buildMessageNode(message, template) {
   const node = template.content.firstElementChild.cloneNode(true);
   node.classList.add(`message-${message.role}`);
@@ -251,16 +287,11 @@ function buildMessageNode(message, template) {
   if (!Array.isArray(message.sources) || message.sources.length === 0) {
     sourceList.remove();
   } else {
-    sourceList.innerHTML = message.sources
-      .map(
-        (source) => `
-          <a class="source-card" href="${source.url}" target="_blank" rel="noreferrer">
-            <strong>${source.title}</strong>
-            <span>${source.snippet || source.url}</span>
-          </a>
-        `,
-      )
-      .join("");
+    // Build source cards with textContent + protocol checks so untrusted source data
+    // cannot inject markup or executable javascript: URLs into the chat thread.
+    message.sources.forEach((source) => {
+      sourceList.appendChild(buildSourceNode(source));
+    });
   }
 
   return node;
