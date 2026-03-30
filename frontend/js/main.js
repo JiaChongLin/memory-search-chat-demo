@@ -36,6 +36,7 @@ import {
   toggleProjectExpanded,
   toggleProjectSessionExpansion,
   toggleShowAllProjects,
+  toggleShowAllUnassigned,
   toggleSidebarSection,
 } from "./state.js";
 
@@ -57,6 +58,8 @@ const elements = {
   globalNotice: document.querySelector("#globalNotice"),
   currentProjectLabel: document.querySelector("#currentProjectLabel"),
   currentSessionLabel: document.querySelector("#currentSessionLabel"),
+  currentVisibilityBadge: document.querySelector("#currentVisibilityBadge"),
+  currentStatusBadge: document.querySelector("#currentStatusBadge"),
   healthBadge: document.querySelector("#healthBadge"),
   environmentValue: document.querySelector("#environmentValue"),
   projectModal: document.querySelector("#projectModal"),
@@ -142,7 +145,7 @@ async function refreshHealth(silent = false) {
     setBackendBaseUrl(baseUrl);
     setHealth({
       status: "success",
-      label: "在线",
+      label: "已连接",
       environment: payload.environment || "unknown",
     });
     if (!silent) {
@@ -151,11 +154,11 @@ async function refreshHealth(silent = false) {
   } catch (error) {
     setHealth({
       status: "warning",
-      label: "连接失败",
+      label: "连接异常",
       environment: "不可用",
     });
     if (!silent) {
-      setNotice("global", `无法连接后端：${formatErrorMessage(error)}`, "danger");
+      setNotice("global", `检查后端失败：${formatErrorMessage(error)}`, "danger");
     }
   } finally {
     setBusy("health", false);
@@ -207,7 +210,7 @@ async function syncSelectedSessionDetail() {
       setSelectedSessionDetail(null);
       return;
     }
-    setNotice("sessions", `读取会话详情失败：${formatErrorMessage(error)}`, "warning");
+    setNotice("sessions", `同步会话详情失败：${formatErrorMessage(error)}`, "warning");
   }
 }
 
@@ -252,7 +255,7 @@ async function handleProjectCreate(event) {
     elements.projectAccessSelect.value = "open";
     setNotice(
       "projects",
-      `项目 ${project.name} 创建成功，访问模式：${getAccessModeLabel(project.access_mode)}。`,
+      `项目 ${project.name} 已创建，访问模式为 ${getAccessModeLabel(project.access_mode)}。`,
       "success",
     );
     await refreshProjects({ silent: true });
@@ -292,7 +295,7 @@ async function createBlankSession(projectId = null) {
     setNewChatMenuOpen(false);
     setNotice(
       "sessions",
-      projectId === null ? "已创建未归属会话。" : "已在当前项目下创建新聊天。",
+      projectId === null ? "已创建未归属会话。" : "已在当前项目下创建新会话。",
       "success",
     );
     await refreshSessions({ silent: true });
@@ -349,14 +352,14 @@ async function handleDeleteSession(sessionId) {
 async function handleMoveSession() {
   const state = getState();
   if (!state.currentSessionId) {
-    setNotice("sessions", "请先选择一个会话。", "warning");
+    setNotice("sessions", "当前没有选中会话。", "warning");
     return;
   }
 
   const moveSelect = document.querySelector("#moveProjectSelect");
   const rawValue = moveSelect?.value || "";
   if (!rawValue) {
-    setNotice("sessions", "请选择目标项目或移出项目。", "warning");
+    setNotice("sessions", "请先选择目标项目。", "warning");
     return;
   }
 
@@ -368,9 +371,7 @@ async function handleMoveSession() {
     syncProjectSelection(session.project_id);
     setNotice(
       "sessions",
-      targetProjectId === null
-        ? "会话已移出项目，现在是未归属会话。"
-        : "会话已移动到目标项目。",
+      targetProjectId === null ? "会话已移出项目。": "会话已移动到目标项目。",
       "success",
     );
     await refreshSessions({ silent: true });
@@ -389,12 +390,12 @@ async function handleChatSubmit(event) {
 
   const stateBeforeSend = getState();
   if (!stateBeforeSend.currentSessionId) {
-    setNotice("chat", "当前没有选中会话。请先在左侧选择或创建会话。", "warning");
+    setNotice("chat", "请先从左侧选择一个会话。", "warning");
     return;
   }
 
   if (!canChatWithCurrentSelection()) {
-    setNotice("chat", "当前会话已归档或删除，请切换到可写会话。", "warning");
+    setNotice("chat", "当前会话已归档或已删除，请切换到其他会话。", "warning");
     return;
   }
 
@@ -436,7 +437,7 @@ async function handleChatSubmit(event) {
 
     setNotice(
       "chat",
-      `已收到回复。后端返回的 context_scope 会继续保留字段名，但现在按“项目访问模式解析结果”理解：${getAccessModeLabel(response.context_scope)}。`,
+      `消息已发送，当前上下文解析结果为 ${getAccessModeLabel(response.context_scope)}。`,
       "success",
     );
     await refreshSessions({ silent: true });
@@ -480,6 +481,12 @@ function handleGlobalClick(event) {
   const projectMoreToggle = event.target.closest("[data-projects-more-toggle]");
   if (projectMoreToggle) {
     toggleShowAllProjects();
+    return;
+  }
+
+  const unassignedMoreToggle = event.target.closest("[data-unassigned-more-toggle]");
+  if (unassignedMoreToggle) {
+    toggleShowAllUnassigned();
     return;
   }
 
@@ -565,10 +572,7 @@ function handleGlobalClick(event) {
     return;
   }
 
-  if (
-    !event.target.closest("#newChatButton") &&
-    !event.target.closest("#newChatMenu")
-  ) {
+  if (!event.target.closest("#newChatButton") && !event.target.closest("#newChatMenu")) {
     setNewChatMenuOpen(false);
   }
 }
@@ -580,9 +584,6 @@ function wireEvents() {
   });
   elements.checkHealthButton.addEventListener("click", () => refreshHealth());
   elements.newChatButton.addEventListener("click", handleNewChatClick);
-  elements.searchChatsButton.addEventListener("click", () => {
-    setNotice("global", "搜索聊天入口已预留，后续再接真实搜索能力。", "info");
-  });
   elements.projectForm.addEventListener("submit", handleProjectCreate);
   elements.composerForm.addEventListener("submit", handleChatSubmit);
   elements.messageInput.addEventListener("keydown", handleComposerKeydown);

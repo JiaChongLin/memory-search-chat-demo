@@ -15,6 +15,7 @@ const DEFAULT_SIDEBAR_STATE = {
     unassigned: false,
   },
   showAllProjects: false,
+  showAllUnassigned: false,
   expandedProjectIds: [],
   expandedProjectSessionIds: [],
 };
@@ -52,6 +53,7 @@ function normalizeSidebarState(rawValue) {
       unassigned: Boolean(rawValue.collapsedSections?.unassigned),
     },
     showAllProjects: Boolean(rawValue.showAllProjects),
+    showAllUnassigned: Boolean(rawValue.showAllUnassigned),
     expandedProjectIds: Array.isArray(rawValue.expandedProjectIds)
       ? rawValue.expandedProjectIds
       : [],

@@ -43,6 +43,24 @@ function getUnassignedSessions(state) {
   return state.sessions.filter((session) => session.project_id === null);
 }
 
+function renderSessionButton(state, session) {
+  const selected = state.currentSessionId === session.id ? "selected" : "";
+  return `
+    <button
+      class="nav-session-item ${selected}"
+      type="button"
+      data-session-select="${escapeHtml(session.id)}"
+    >
+      <span class="nav-session-title">${escapeHtml(getSessionTitle(session.title))}</span>
+      <span class="nav-session-tags">
+        ${session.is_private ? badge("私密", "danger") : ""}
+        ${session.status === "archived" ? badge("归档", "warning") : ""}
+        ${session.status === "deleted" ? badge("已删除", "danger") : ""}
+      </span>
+    </button>
+  `;
+}
+
 function renderSidebarProjectItem(state, project) {
   const sessions = getProjectSessions(state, project.id);
   const isSelected = state.currentProjectId === project.id;
@@ -53,40 +71,16 @@ function renderSidebarProjectItem(state, project) {
   const visibleSessions = showAllSessions ? sessions : sessions.slice(0, 5);
   const hasMoreSessions = sessions.length > 5;
 
-  const sessionRows = visibleSessions
-    .map((session) => {
-      const sessionSelected = state.currentSessionId === session.id ? "selected" : "";
-      return `
-        <button
-          class="nav-session-item ${sessionSelected}"
-          type="button"
-          data-session-select="${escapeHtml(session.id)}"
-        >
-          <span class="nav-session-title">${escapeHtml(getSessionTitle(session.title))}</span>
-          <span class="nav-session-tags">
-            ${session.is_private ? badge("私密", "danger") : ""}
-            ${session.status === "archived" ? badge("归档", "warning") : ""}
-            ${session.status === "deleted" ? badge("已删除", "danger") : ""}
-          </span>
-        </button>
-      `;
-    })
-    .join("");
-
   return `
     <article class="nav-project-card ${isSelected ? "selected" : ""}">
       <div class="nav-project-top">
-        <button
-          class="nav-project-main"
-          type="button"
-          data-project-select="${project.id}"
-        >
+        <button class="nav-project-main" type="button" data-project-select="${project.id}">
           <span class="nav-project-title-row">
             <strong>${escapeHtml(project.name)}</strong>
             <span class="nav-count">${sessions.length}</span>
           </span>
           <span class="nav-project-meta">
-            ${badge(project.access_mode === "open" ? "开放" : "仅限项目", "scope")}
+            ${badge(getAccessModeLabel(project.access_mode), "scope")}
             ${project.status !== "active" ? badge(getStatusLabel(project.status), "warning") : ""}
           </span>
         </button>
@@ -95,9 +89,9 @@ function renderSidebarProjectItem(state, project) {
           type="button"
           data-project-toggle="${project.id}"
           aria-expanded="${isExpanded}"
-          title="${isExpanded ? "折叠项目" : "展开项目"}"
+          title="${isExpanded ? "收起项目" : "展开项目"}"
         >
-          ${isExpanded ? "▾" : "▸"}
+          ${isExpanded ? "－" : "＋"}
         </button>
       </div>
       ${
@@ -108,15 +102,15 @@ function renderSidebarProjectItem(state, project) {
                 sessions.length
                   ? `
                     <div class="nav-session-list">
-                      ${sessionRows}
+                      ${visibleSessions.map((session) => renderSessionButton(state, session)).join("")}
                     </div>
                     ${
                       hasMoreSessions
-                        ? `<button class="nav-more-button" type="button" data-project-sessions-toggle="${project.id}">${showAllSessions ? "收起" : "更多"}</button>`
+                        ? `<button class="nav-more-button" type="button" data-project-sessions-toggle="${project.id}">${showAllSessions ? "收起会话" : "更多会话"}</button>`
                         : ""
                     }
                   `
-                  : '<div class="nav-empty">这个项目下还没有会话。</div>'
+                  : '<div class="nav-empty">当前项目下还没有会话，可以先新建聊天。</div>'
               }
             </div>
           `
@@ -136,21 +130,21 @@ function renderProjectsSection(state, elements) {
     <div class="sidebar-section-head">
       <button class="sidebar-section-toggle" type="button" data-section-toggle="projects">
         <span>项目</span>
-        <span class="sidebar-toggle-icon">${collapsed ? "▸" : "▾"}</span>
+        <span class="sidebar-toggle-icon">${collapsed ? "＋" : "－"}</span>
       </button>
-      <button id="openProjectModalButton" class="icon-button" type="button" title="新项目">＋</button>
+      <button id="openProjectModalButton" class="icon-button" type="button" title="新建项目">＋</button>
     </div>
     ${
       collapsed
         ? ""
         : `
           <div class="sidebar-section-body">
-            <div class="sidebar-note">项目访问模式创建后暂不支持修改。</div>
+            <div class="sidebar-note">项目访问模式决定跨项目边界。创建后暂不支持修改。</div>
             <div class="nav-list">
               ${
                 projects.length
                   ? projects.map((project) => renderSidebarProjectItem(state, project)).join("")
-                  : '<div class="nav-empty">还没有项目，先创建一个开放项目或仅限项目。</div>'
+                  : '<div class="nav-empty">还没有项目。可以先创建一个开放项目或仅限项目。</div>'
               }
             </div>
             ${
@@ -167,12 +161,15 @@ function renderProjectsSection(state, elements) {
 function renderUnassignedSection(state, elements) {
   const collapsed = state.ui.sidebar.collapsedSections.unassigned;
   const sessions = getUnassignedSessions(state);
+  const showAllUnassigned = state.ui.sidebar.showAllUnassigned;
+  const visibleSessions = showAllUnassigned ? sessions : sessions.slice(0, 10);
+  const hasMoreSessions = sessions.length > 10;
 
   elements.unassignedSection.innerHTML = `
     <div class="sidebar-section-head">
       <button class="sidebar-section-toggle" type="button" data-section-toggle="unassigned">
         <span>未归属会话</span>
-        <span class="sidebar-toggle-icon">${collapsed ? "▸" : "▾"}</span>
+        <span class="sidebar-toggle-icon">${collapsed ? "＋" : "－"}</span>
       </button>
     </div>
     ${
@@ -180,32 +177,19 @@ function renderUnassignedSection(state, elements) {
         ? ""
         : `
           <div class="sidebar-section-body">
+            <div class="sidebar-note">这里只展示没有挂到任何项目的会话。</div>
             <div class="unassigned-list">
               ${
-                sessions.length
-                  ? sessions
-                      .map((session) => {
-                        const selected =
-                          state.currentSessionId === session.id ? "selected" : "";
-                        return `
-                          <button
-                            class="nav-session-item ${selected}"
-                            type="button"
-                            data-session-select="${escapeHtml(session.id)}"
-                          >
-                            <span class="nav-session-title">${escapeHtml(getSessionTitle(session.title))}</span>
-                            <span class="nav-session-tags">
-                              ${session.is_private ? badge("私密", "danger") : ""}
-                              ${session.status === "archived" ? badge("归档", "warning") : ""}
-                              ${session.status === "deleted" ? badge("已删除", "danger") : ""}
-                            </span>
-                          </button>
-                        `;
-                      })
-                      .join("")
-                  : '<div class="nav-empty">暂时没有未归属会话。</div>'
+                visibleSessions.length
+                  ? visibleSessions.map((session) => renderSessionButton(state, session)).join("")
+                  : '<div class="nav-empty">当前还没有未归属会话。</div>'
               }
             </div>
+            ${
+              hasMoreSessions
+                ? `<button class="nav-more-button" type="button" data-unassigned-more-toggle="true">${showAllUnassigned ? "收起会话" : "更多会话"}</button>`
+                : ""
+            }
           </div>
         `
     }
@@ -216,63 +200,43 @@ function renderCurrentSessionPanel(state, elements) {
   const session = state.selectedSessionDetail;
   const project = state.projects.find((item) => item.id === session?.project_id) || null;
 
-  elements.currentProjectLabel.textContent = state.selectedProjectDetail
-    ? state.selectedProjectDetail.name
-    : "未选中";
-  elements.currentSessionLabel.textContent = session
-    ? getSessionTitle(session.title)
-    : "未选中";
-
   if (!session) {
     elements.sessionDetail.innerHTML = `
-      <div class="detail-card empty-card">
-        左侧选择一个会话后，右侧会显示当前会话状态、归属项目和会话操作。
+      <div class="session-side-card">
+        <div class="mini-head">
+          <h3>会话操作</h3>
+          <span class="badge neutral">未选择</span>
+        </div>
+        <p class="detail-copy">选择会话后，这里会显示移动、归档和删除等操作。</p>
       </div>
     `;
-    elements.sessionBanner.className = "notice info";
-    elements.sessionBanner.textContent =
-      "当前未选中会话。发送框会保持禁用，直到你在左侧导航中选择或创建会话。";
+    elements.sessionBanner.className = "notice hidden";
+    elements.sessionBanner.textContent = "";
     return;
   }
 
   elements.sessionDetail.innerHTML = `
-    <div class="detail-card">
-      <div class="detail-head">
-        <strong>${escapeHtml(getSessionTitle(session.title))}</strong>
-        <div class="tag-row">
-          ${badge(session.project_id ? "已归属项目" : "未归属会话", "soft")}
-          ${badge(getPrivacyLabel(session.is_private), session.is_private ? "danger" : "soft")}
-          ${badge(
-            getStatusLabel(session.status),
-            session.status === "active"
-              ? "success"
-              : session.status === "archived"
-                ? "warning"
-                : "danger",
-          )}
-        </div>
+    <div class="session-side-card">
+      <div class="mini-head">
+        <h3>会话操作</h3>
+        <span class="badge ${session.status === "active" ? "success" : session.status === "archived" ? "warning" : "danger"}">${escapeHtml(
+          getStatusLabel(session.status),
+        )}</span>
       </div>
       <p class="detail-copy">${escapeHtml(getPrivacyHelpText(session.is_private))}</p>
       <div class="detail-meta stacked">
-        <span>会话 ID: ${escapeHtml(session.id)}</span>
-        <span>所属项目: ${escapeHtml(project ? project.name : "无项目会话")}</span>
-        ${
-          project
-            ? `<span>项目访问模式: ${escapeHtml(getAccessModeLabel(project.access_mode))}</span>`
-            : "<span>项目访问模式: 无项目，按开放历史处理</span>"
-        }
-        <span>更新时间: ${escapeHtml(session.updated_at || "-")}</span>
+        <span>会话 ID：${escapeHtml(session.id)}</span>
+        <span>所属项目：${escapeHtml(project ? project.name : "无项目会话")}</span>
+        <span>访问模式：${escapeHtml(project ? getAccessModeHelpText(project.access_mode) : "当前会话不属于任何项目，按开放可访问历史处理。")}</span>
       </div>
-      <div class="session-actions-card">
-        <label class="field-label" for="moveProjectSelect">移动到项目</label>
-        <div class="inline-row">
-          <select id="moveProjectSelect" class="select-input"></select>
-          <button id="moveSessionButton" class="secondary-button" type="button">移动</button>
-        </div>
-        <div class="inline-row action-stack">
-          <button id="archiveSessionButton" class="ghost-button" type="button">归档会话</button>
-          <button id="deleteSessionButton" class="danger-button" type="button">软删除会话</button>
-        </div>
+      <label class="field-label" for="moveProjectSelect">移动到项目</label>
+      <div class="inline-row">
+        <select id="moveProjectSelect" class="select-input"></select>
+        <button id="moveSessionButton" class="secondary-button" type="button">移动</button>
+      </div>
+      <div class="inline-row action-stack">
+        <button id="archiveSessionButton" class="ghost-button" type="button">归档</button>
+        <button id="deleteSessionButton" class="danger-button" type="button">软删除</button>
       </div>
     </div>
   `;
@@ -280,14 +244,14 @@ function renderCurrentSessionPanel(state, elements) {
   if (session.status === "deleted") {
     elements.sessionBanner.className = "notice danger";
     elements.sessionBanner.textContent =
-      "当前会话已被软删除。右侧会保留状态展示，但会禁止继续发送消息。";
+      "当前会话已被软删除。它仍会留在列表中作为状态记录，但不会继续用于聊天。";
     return;
   }
 
   if (session.status === "archived") {
     elements.sessionBanner.className = "notice warning";
     elements.sessionBanner.textContent =
-      "当前会话已归档。右侧会保留状态展示，但会禁止继续发送消息。";
+      "当前会话已归档。你仍可以查看信息，但聊天输入区会保持禁用。";
     return;
   }
 
@@ -298,11 +262,11 @@ function renderCurrentSessionPanel(state, elements) {
 function renderConnectionBox(state, elements) {
   elements.healthBadge.className = `badge ${state.health.status || "neutral"}`;
   elements.healthBadge.textContent = state.health.label;
-  elements.environmentValue.textContent = state.health.environment || "未知";
+  elements.environmentValue.textContent = state.health.environment || "未连接";
   elements.backendBaseUrl.value = state.backendBaseUrl;
 }
 
-function renderProjectSelectOptions(state, elements) {
+function renderProjectSelectOptions(state) {
   const moveSelect = document.querySelector("#moveProjectSelect");
   if (!moveSelect) {
     return;
@@ -310,7 +274,7 @@ function renderProjectSelectOptions(state, elements) {
 
   moveSelect.innerHTML = [
     '<option value="">选择目标项目</option>',
-    '<option value="__none__">移出当前项目，变成未归属会话</option>',
+    '<option value="__none__">移出项目，变成未归属会话</option>',
     ...state.projects.map(
       (project) =>
         `<option value="${project.id}">${escapeHtml(project.name)} (${escapeHtml(
@@ -332,11 +296,11 @@ function renderNewChatMenu(state, elements) {
 
   elements.newChatMenu.innerHTML = `
     <p class="floating-menu-copy">
-      当前已选中项目 <strong>${escapeHtml(project.name)}</strong>。新聊天默认可以创建到当前项目，也可以保留为未归属会话。
+      当前已选中项目 <strong>${escapeHtml(project.name)}</strong>。新聊天可以直接创建到该项目下，也可以先创建为未归属会话。
     </p>
     <div class="floating-menu-actions">
       <button id="createChatInProjectButton" class="secondary-button" type="button">创建到当前项目</button>
-      <button id="createUnassignedChatButton" class="ghost-button" type="button">创建为未归属会话</button>
+      <button id="createUnassignedChatButton" class="ghost-button" type="button">创建未归属会话</button>
     </div>
   `;
 }
@@ -356,7 +320,7 @@ export function renderManagement(state, elements) {
   renderProjectsSection(state, elements);
   renderUnassignedSection(state, elements);
   renderCurrentSessionPanel(state, elements);
-  renderProjectSelectOptions(state, elements);
+  renderProjectSelectOptions(state);
   renderNewChatMenu(state, elements);
   renderProjectModal(state, elements);
 

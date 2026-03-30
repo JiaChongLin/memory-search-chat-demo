@@ -1,4 +1,4 @@
-﻿import {
+import {
   getAccessModeHelpText,
   getAccessModeLabel,
   getCurrentProjectAccessLabel,
@@ -6,7 +6,6 @@
   getBoolLabel,
   getFallbackReasonLabel,
   getModelUsageLabel,
-  getProjectIdLabel,
   getPrivacyHelpText,
   getPrivacyLabel,
   getRoleLabel,
@@ -61,7 +60,10 @@ function buildDebugItems(message) {
   }
 
   if (debug.fallback_reason) {
-    items.push({ label: `降级原因：${getFallbackReasonLabel(debug.fallback_reason)}`, variant: "danger" });
+    items.push({
+      label: `降级原因：${getFallbackReasonLabel(debug.fallback_reason)}`,
+      variant: "danger",
+    });
   }
 
   return items;
@@ -72,7 +74,59 @@ function resolveCurrentProject(state) {
   if (!session?.project_id) {
     return null;
   }
+
   return state.projects.find((item) => item.id === session.project_id) || null;
+}
+
+function renderHeader(state, elements) {
+  const session = state.selectedSessionDetail;
+  const project = resolveCurrentProject(state);
+
+  if (!session) {
+    elements.currentSessionLabel.textContent = "请选择一个会话";
+    elements.currentProjectLabel.className = "badge soft";
+    elements.currentProjectLabel.textContent = "无项目";
+    elements.currentVisibilityBadge.className = "badge neutral";
+    elements.currentVisibilityBadge.textContent = "未选择";
+    elements.currentStatusBadge.className = "badge neutral";
+    elements.currentStatusBadge.textContent = "未选择";
+    elements.selectionHint.textContent =
+      "请从左侧导航中创建或选择一个会话，然后在这里继续聊天。";
+    return;
+  }
+
+  elements.currentSessionLabel.textContent = getSessionTitle(session.title);
+  elements.currentProjectLabel.className = `badge ${project ? "scope" : "soft"}`;
+  elements.currentProjectLabel.textContent = project
+    ? `${project.name} · ${getAccessModeLabel(project.access_mode)}`
+    : "无项目会话";
+  elements.currentVisibilityBadge.className = `badge ${session.is_private ? "danger" : "soft"}`;
+  elements.currentVisibilityBadge.textContent = getPrivacyLabel(session.is_private);
+  elements.currentStatusBadge.className = `badge ${
+    session.status === "active"
+      ? "success"
+      : session.status === "archived"
+        ? "warning"
+        : "danger"
+  }`;
+  elements.currentStatusBadge.textContent = getStatusLabel(session.status);
+
+  if (session.status === "deleted") {
+    elements.selectionHint.textContent =
+      "当前会话已被软删除。你可以查看本地缓存消息和调试信息，但不能继续发送新消息。";
+    return;
+  }
+
+  if (session.status === "archived") {
+    elements.selectionHint.textContent =
+      "当前会话已归档。你仍可以查看历史和调试信息，但聊天输入区会保持禁用。";
+    return;
+  }
+
+  const baseHint = project
+    ? `当前项目为 ${getAccessModeLabel(project.access_mode)}，${getAccessModeHelpText(project.access_mode)}`
+    : "当前会话不属于任何项目，会按开放可访问历史来解析可读上下文。";
+  elements.selectionHint.textContent = `${baseHint} ${getPrivacyHelpText(session.is_private)}`;
 }
 
 function renderDebugPanel(state, elements) {
@@ -83,9 +137,9 @@ function renderDebugPanel(state, elements) {
   const project = resolveCurrentProject(state);
 
   const rows = [
-    ["session_id", sessionId || "未选中"],
+    ["session_id", sessionId || "未选择"],
     ["current_project_access", getCurrentProjectAccessLabel(project)],
-    ["current_session_visibility", session ? getPrivacyLabel(session.is_private) : "未选中"],
+    ["current_session_visibility", session ? getPrivacyLabel(session.is_private) : "未选择"],
     ["context_scope", getAccessModeLabel(debug?.context_scope)],
     ["related_summary_count", String(debug?.related_summary_count ?? 0)],
     ["used_live_model", getBoolLabel(debug?.used_live_model)],
@@ -115,12 +169,11 @@ function renderDebugPanel(state, elements) {
   if (session) {
     notes.push(`当前会话：${getPrivacyHelpText(session.is_private)}`);
   }
+
   elements.debugInfo.dataset.notes = notes.join(" ");
-  if (elements.debugNote) {
-    elements.debugNote.textContent = notes.length
-      ? notes.join(" ")
-      : "这里会用新模型语言解释 context_scope、项目访问模式和会话可见性。";
-  }
+  elements.debugNote.textContent = notes.length
+    ? notes.join(" ")
+    : "这里会继续显示 context_scope，但按当前 access_mode 语义解释，而不是旧四档 scope。";
 }
 
 function renderSummary(state, elements) {
@@ -133,8 +186,8 @@ function renderSummary(state, elements) {
   }
 
   elements.summaryText.textContent = state.currentSessionId
-    ? "当前选中会话还没有本地缓存摘要。只有本页面发起的聊天响应会更新这里的摘要显示。"
-    : "当前没有选中会话。请先在左侧导航中创建或选择会话，然后再到右侧聊天区发消息。";
+    ? "当前选中会话还没有本地缓存 summary。只有本页内完成的聊天请求会更新这里的摘要展示。"
+    : "当前没有选中会话。请先在左侧导航中创建或选择会话。";
   elements.summaryBadge.className = "badge neutral";
   elements.summaryBadge.textContent = "无摘要";
 }
@@ -149,32 +202,24 @@ function renderComposerState(state, elements) {
   elements.messageInput.disabled = disabled;
 
   if (state.busy.chat) {
-    elements.composerHint.textContent = "请求进行中，等待后端响应...";
+    elements.composerHint.textContent = "请求进行中，请稍候...";
     return;
   }
 
   if (missingSelection) {
-    elements.composerHint.textContent = "请先在左侧导航中创建或选择一个会话，然后才能发送消息。";
+    elements.composerHint.textContent = "请先从左侧导航中选择一个会话。";
+    elements.messageInput.placeholder = "先在左侧选中会话，再开始聊天。";
     return;
   }
 
   if (locked) {
-    elements.composerHint.textContent = "当前会话已归档或删除。请切换到其他会话，或创建新会话继续测试。";
+    elements.composerHint.textContent = "当前会话已归档或已删除，输入区保持禁用。";
+    elements.messageInput.placeholder = "请切换到其他会话，或创建一个新聊天继续测试。";
     return;
   }
 
   elements.composerHint.textContent = "Shift + Enter 换行，Enter 发送。";
-}
-
-function renderSelectionHint(state, elements) {
-  const session = state.selectedSessionDetail;
-  if (!session) {
-    elements.selectionHint.textContent = "请先在左侧导航中显式选择或创建会话。当前未选中会话时，右侧聊天区不会直接发送消息。";
-    return;
-  }
-
-  const projectLabel = getProjectIdLabel(session.project_id);
-  elements.selectionHint.textContent = `当前会话：${getSessionTitle(session.title)}，归属：${projectLabel}，可见性：${getPrivacyLabel(session.is_private)}，状态：${getStatusLabel(session.status)}。`;
+  elements.messageInput.placeholder = "围绕当前会话继续聊天，观察 summary、sources 和调试信息变化。";
 }
 
 function renderNotice(state, elements) {
@@ -232,9 +277,19 @@ function renderMessages(state, elements) {
 
   if (!messages.length) {
     elements.chatEmptyState.hidden = false;
-    elements.chatEmptyState.textContent = state.currentSessionId
-      ? "当前会话没有本地渲染过的消息。后端没有提供完整消息查询接口，所以这里只显示本页面期间缓存过的消息。"
-      : "当前未选中会话。请先在左侧导航中选择已有会话，或先创建一个空白会话。";
+    elements.chatEmptyState.innerHTML = state.currentSessionId
+      ? `
+        <div>
+          <strong>这个会话还没有本地渲染消息</strong>
+          <span>当前前端只展示本页面会话期间缓存过的消息。发送一条新消息后，这里会变成聊天主区。</span>
+        </div>
+      `
+      : `
+        <div>
+          <strong>请选择一个会话开始</strong>
+          <span>左侧导航会按项目和未归属会话组织列表。选中会话后，右侧会切换到对应聊天主区。</span>
+        </div>
+      `;
     return;
   }
 
@@ -247,13 +302,9 @@ function renderMessages(state, elements) {
 
 export function renderChat(state, elements) {
   renderNotice(state, elements);
+  renderHeader(state, elements);
   renderSummary(state, elements);
   renderDebugPanel(state, elements);
-  renderSelectionHint(state, elements);
   renderComposerState(state, elements);
   renderMessages(state, elements);
-
-  if (!state.currentSessionId) {
-    elements.currentSessionLabel.textContent = "未选中";
-  }
 }
