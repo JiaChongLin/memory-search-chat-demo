@@ -254,13 +254,6 @@ function renderCurrentSessionPanel(state, elements) {
   elements.sessionBanner.textContent = "";
 }
 
-function renderConnectionBox(state, elements) {
-  elements.healthBadge.className = `badge ${state.health.status || "neutral"}`;
-  elements.healthBadge.textContent = state.health.label;
-  elements.environmentValue.textContent = state.health.environment || "未连接";
-  elements.backendBaseUrl.value = state.backendBaseUrl;
-}
-
 function renderProjectSelectOptions(state) {
   const moveSelect = document.querySelector("#moveProjectSelect");
   if (!moveSelect) {
@@ -311,7 +304,6 @@ export function renderManagement(state, elements) {
   renderNotice(elements.projectNotice, state.notices.projects);
   renderNotice(elements.sessionNotice, state.notices.sessions);
 
-  renderConnectionBox(state, elements);
   renderProjectsSection(state, elements);
   renderUnassignedSection(state, elements);
   renderCurrentSessionPanel(state, elements);

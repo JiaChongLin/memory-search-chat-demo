@@ -128,6 +128,12 @@ http://127.0.0.1:5500
 pytest tests/test_context_rules.py tests/test_management_api.py tests/test_chat_api.py tests/test_services.py -q
 ```
 
+## 前端补充说明
+
+- 前端默认直接使用本地开发后端地址，连接配置入口已从页面 UI 中移除。
+- 页面启动时仍会静默执行 health check，但不再在左侧显示单独的连接状态面板。
+- 右侧输入框现在是单行起步、自动增高的聊天输入区；超过最大高度后会在输入框内部滚动，发送后会恢复默认高度。
+
 ## 文档
 
 - `docs/project-plan.md`

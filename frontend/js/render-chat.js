@@ -275,8 +275,8 @@ function renderMessages(state, elements) {
     elements.chatEmptyState.innerHTML = state.currentSessionId
       ? `
         <div>
-          <strong>这个会话还没有消息历史</strong>
-          <span>会话切换时会自动从后端回读完整消息历史。你也可以直接发送一条新消息，从这里继续当前会话。</span>
+          <strong>这个会话还没有消息</strong>
+          <span>从这里发出第一条消息，或继续把它当作一个新的讨论起点。</span>
         </div>
       `
       : `
@@ -289,6 +289,7 @@ function renderMessages(state, elements) {
   }
 
   elements.chatEmptyState.hidden = true;
+  elements.chatEmptyState.innerHTML = "";
   messages.forEach((message) => {
     elements.messageList.appendChild(buildMessageNode(message, elements.messageTemplate));
   });
