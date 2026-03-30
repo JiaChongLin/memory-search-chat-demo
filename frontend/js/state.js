@@ -1,4 +1,4 @@
-import {
+﻿import {
   DEFAULT_BACKEND_BASE_URL,
   loadPersistedState,
   persistStateSnapshot,
@@ -31,7 +31,7 @@ const state = {
   health: {
     status: "idle",
     label: "未检查",
-    environment: "未连接",
+    environment: "unknown",
   },
   notices: {
     global: null,
@@ -114,10 +114,6 @@ export function subscribe(listener) {
 
 export function getState() {
   return state;
-}
-
-export function getActiveSessionKey() {
-  return state.currentSessionId || DRAFT_SESSION_KEY;
 }
 
 export function getMessagesForCurrentSession() {
@@ -258,6 +254,16 @@ export function setSummaryForSession(sessionId, summary) {
   });
 }
 
+export function setMessagesForSession(sessionId, messages) {
+  if (!sessionId) {
+    return;
+  }
+
+  commit((draft) => {
+    draft.messageMap[sessionId] = Array.isArray(messages) ? messages : [];
+  });
+}
+
 export function appendMessage(sessionId, message) {
   const key = sessionId || DRAFT_SESSION_KEY;
   commit((draft) => {
@@ -268,31 +274,15 @@ export function appendMessage(sessionId, message) {
   });
 }
 
-export function moveDraftToSession(sessionId) {
+export function removeSessionData(sessionId) {
   if (!sessionId) {
     return;
   }
 
   commit((draft) => {
-    const draftMessages = Array.isArray(draft.messageMap[DRAFT_SESSION_KEY])
-      ? draft.messageMap[DRAFT_SESSION_KEY]
-      : [];
-
-    if (!Array.isArray(draft.messageMap[sessionId])) {
-      draft.messageMap[sessionId] = [];
-    }
-
-    if (draftMessages.length > 0) {
-      draft.messageMap[sessionId] = [...draft.messageMap[sessionId], ...draftMessages];
-    }
-
-    delete draft.messageMap[DRAFT_SESSION_KEY];
-  });
-}
-
-export function clearDraftMessages() {
-  commit((draft) => {
-    delete draft.messageMap[DRAFT_SESSION_KEY];
+    delete draft.messageMap[sessionId];
+    delete draft.summaryMap[sessionId];
+    delete draft.chatDebugMap[sessionId];
   });
 }
 

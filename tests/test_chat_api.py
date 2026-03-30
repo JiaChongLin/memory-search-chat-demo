@@ -1,6 +1,8 @@
 ﻿import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from backend.app.db.models import ChatSession
 from backend.app.services.search_service import SearchResult, SearchService
 
 
@@ -17,6 +19,7 @@ def test_chat_first_request_returns_session_and_reply(client: TestClient) -> Non
     assert isinstance(data["sources"], list)
     assert data["context_scope"] == "open"
     assert data["related_summary_count"] == 0
+    assert data["title"] == "hello demo"
 
 
 def test_chat_reuses_existing_session(client: TestClient) -> None:
@@ -37,6 +40,7 @@ def test_chat_reuses_existing_session(client: TestClient) -> None:
     assert second_data["reply"]
     assert second_data["context_scope"] == "open"
     assert second_data["related_summary_count"] == 0
+    assert second_data["title"] == first_data["title"]
 
 
 def test_chat_returns_search_sources_when_search_hits(
@@ -65,6 +69,7 @@ def test_chat_returns_search_sources_when_search_hits(
     assert data["search_used"] is True
     assert data["sources"][0]["title"] == "Example News"
     assert data["context_scope"] == "open"
+    assert data["title"] == "today latest ai news"
 
 
 def test_archived_session_cannot_continue_chatting(client: TestClient) -> None:
@@ -93,3 +98,50 @@ def test_deleted_session_cannot_be_recreated_by_chat(client: TestClient) -> None
 
     assert response.status_code == 404
     assert response.json()["error"]["message"] == "Session not found."
+
+
+def test_chat_auto_generates_title_for_untitled_session(
+    client: TestClient,
+    session_local,
+) -> None:
+    create_response = client.post("/api/sessions", json={"title": None})
+    session_id = create_response.json()["id"]
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "session_id": session_id,
+            "message": "帮我总结一下这个项目的权限边界和跨项目访问规则",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"]
+    assert data["title"].startswith("帮我总结一下这个项目的权限边界")
+
+    with session_local() as db:
+        session = db.get(ChatSession, session_id)
+        assert session is not None
+        assert session.title == data["title"]
+
+
+def test_chat_does_not_override_existing_manual_title(
+    client: TestClient,
+    session_local,
+) -> None:
+    create_response = client.post("/api/sessions", json={"title": "Manual title"})
+    session_id = create_response.json()["id"]
+
+    response = client.post(
+        "/api/chat",
+        json={"session_id": session_id, "message": "generate something else"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Manual title"
+
+    with session_local() as db:
+        session = db.get(ChatSession, session_id)
+        assert session is not None
+        assert session.title == "Manual title"

@@ -12,8 +12,8 @@ const DEBUG_FIELD_LABELS = {
   session_id: "会话 ID",
   current_project_access: "当前项目访问模式",
   current_session_visibility: "当前会话可见性",
-  context_scope: "解析结果",
-  related_summary_count: "相关摘要数",
+  context_scope: "上下文解析结果",
+  related_summary_count: "相关摘要数量",
   used_live_model: "是否直连模型",
   fallback_reason: "降级原因",
   search_triggered: "是否触发搜索",
@@ -33,10 +33,10 @@ export function getAccessModeLabel(value) {
 
 export function getAccessModeHelpText(value) {
   if (value === "project_only") {
-    return "只能访问项目内历史，项目内会话对项目外不可见。";
+    return "只能访问项目内历史，且项目内会话对项目外不可见。";
   }
   if (value === "open") {
-    return "可访问外部可访问历史，且自身非私密会话也可被外部访问。";
+    return "可访问外部可访问历史，且项目内非私密会话也可被外部访问。";
   }
   return "未识别访问模式。";
 }
@@ -53,14 +53,6 @@ export function getPrivacyHelpText(isPrivate) {
   return isPrivate
     ? "不会被其他会话访问，但自己仍然可以访问其他允许访问的历史。"
     : "可被其他允许访问的会话读取，也可以读取其他允许访问的历史。";
-}
-
-export function getProjectBindingLabel(projectId) {
-  return projectId ? "已归属项目" : "无项目会话";
-}
-
-export function getProjectIdLabel(projectId) {
-  return projectId ? `项目 #${projectId}` : "无项目";
 }
 
 export function getCurrentProjectAccessLabel(project) {

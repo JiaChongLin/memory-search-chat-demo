@@ -28,6 +28,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     reply: str
+    title: Optional[str] = None
     summary: Optional[str] = None
     used_live_model: bool = False
     fallback_reason: Optional[str] = None

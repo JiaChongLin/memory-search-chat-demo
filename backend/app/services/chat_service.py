@@ -12,6 +12,7 @@ from backend.app.services.context_resolver import ContextResolver
 from backend.app.services.llm_service import LLMService
 from backend.app.services.memory_service import MemoryService
 from backend.app.services.search_service import SearchService
+from backend.app.services.session_service import SessionService
 
 
 class ChatService:
@@ -21,11 +22,13 @@ class ChatService:
         self,
         memory_service: MemoryService,
         context_resolver: ContextResolver,
+        session_service: SessionService,
         search_service: SearchService,
         llm_service: LLMService,
     ) -> None:
         self._memory_service = memory_service
         self._context_resolver = context_resolver
+        self._session_service = session_service
         self._search_service = search_service
         self._llm_service = llm_service
 
@@ -54,9 +57,20 @@ class ChatService:
             assistant_message=llm_reply.content,
         )
 
+        session_title = None
+        try:
+            session = self._session_service.maybe_generate_title(
+                session_id,
+                fallback_user_message=payload.message,
+            )
+            session_title = session.title
+        except Exception:
+            session_title = None
+
         return ChatResponse(
             session_id=session_id,
             reply=llm_reply.content,
+            title=session_title,
             summary=updated_summary,
             used_live_model=llm_reply.used_live_model,
             fallback_reason=llm_reply.fallback_reason,
@@ -88,12 +102,14 @@ def get_chat_service(db: Session = Depends(get_db)) -> ChatService:
         summary_max_chars=settings.memory_summary_max_chars,
     )
     context_resolver = ContextResolver(db=db, memory_service=memory_service)
+    session_service = SessionService(db=db)
     search_service = SearchService(settings=settings)
     llm_service = LLMService(settings=settings)
 
     return ChatService(
         memory_service=memory_service,
         context_resolver=context_resolver,
+        session_service=session_service,
         search_service=search_service,
         llm_service=llm_service,
     )

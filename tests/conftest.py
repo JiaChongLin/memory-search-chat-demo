@@ -21,6 +21,7 @@ from backend.app.services.context_resolver import ContextResolver
 from backend.app.services.llm_service import LLMService
 from backend.app.services.memory_service import MemoryService
 from backend.app.services.search_service import SearchService
+from backend.app.services.session_service import SessionService
 
 
 @pytest.fixture
@@ -75,6 +76,7 @@ def test_env(monkeypatch):
             yield ChatService(
                 memory_service=memory_service,
                 context_resolver=ContextResolver(db=db, memory_service=memory_service),
+                session_service=SessionService(db=db),
                 search_service=SearchService(settings=settings),
                 llm_service=LLMService(settings=settings),
             )
