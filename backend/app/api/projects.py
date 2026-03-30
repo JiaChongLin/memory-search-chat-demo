@@ -9,6 +9,7 @@ from backend.app.schemas.projects import (
     ProjectCreateRequest,
     ProjectDeleteResponse,
     ProjectResponse,
+    ProjectUpdateRequest,
 )
 from backend.app.services.project_service import ProjectService
 
@@ -54,6 +55,21 @@ def get_project(
     db: Session = Depends(get_db),
 ) -> ProjectResponse:
     project = ProjectService(db).get_project(project_id)
+    return ProjectResponse.model_validate(project)
+
+
+@router.patch(
+    "/{project_id}",
+    response_model=ProjectResponse,
+    summary="Update a project",
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+def update_project(
+    project_id: int,
+    payload: ProjectUpdateRequest,
+    db: Session = Depends(get_db),
+) -> ProjectResponse:
+    project = ProjectService(db).update_project(project_id, payload)
     return ProjectResponse.model_validate(project)
 
 

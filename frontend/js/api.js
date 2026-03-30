@@ -63,6 +63,13 @@ export function createProject(baseUrl, payload) {
   });
 }
 
+export function updateProject(baseUrl, projectId, payload) {
+  return requestJson(baseUrl, `/api/projects/${projectId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function deleteProject(baseUrl, projectId) {
   return requestJson(baseUrl, `/api/projects/${projectId}`, {
     method: "DELETE",

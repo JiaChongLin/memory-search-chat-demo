@@ -13,6 +13,7 @@ import {
   moveSession,
   normalizeBaseUrl,
   sendChat,
+  updateProject,
   updateSession,
 } from "./api.js";
 import { renderChat } from "./render-chat.js";
@@ -33,14 +34,14 @@ import {
   setMessagesForSession,
   setNewChatMenuOpen,
   setNotice,
-  setProjectModalOpen,
+  setProjectModalState,
   setProjects,
   setSelectedProjectDetail,
   setSelectedSessionDetail,
   setSessions,
   setSummaryForSession,
   subscribe,
-  toggleProjectExpanded,
+  setProjectExpanded,
   toggleProjectSessionExpansion,
   toggleShowAllProjects,
   toggleShowAllUnassigned,
@@ -66,9 +67,18 @@ const elements = {
   currentStatusBadge: document.querySelector("#currentStatusBadge"),
   renameSessionButton: document.querySelector("#renameSessionButton"),
   projectModal: document.querySelector("#projectModal"),
+  projectModalTitle: document.querySelector("#projectModalTitle"),
+  projectModeHint: document.querySelector("#projectModeHint"),
+  projectAccessReadonly: document.querySelector("#projectAccessReadonly"),
+  projectSubmitButton: document.querySelector("#projectSubmitButton"),
   projectNameInput: document.querySelector("#projectNameInput"),
   projectDescriptionInput: document.querySelector("#projectDescriptionInput"),
   projectAccessSelect: document.querySelector("#projectAccessSelect"),
+  confirmModal: document.querySelector("#confirmModal"),
+  confirmModalTitle: document.querySelector("#confirmModalTitle"),
+  confirmModalBody: document.querySelector("#confirmModalBody"),
+  confirmCancelButton: document.querySelector("#confirmCancelButton"),
+  confirmAcceptButton: document.querySelector("#confirmAcceptButton"),
   messageInput: document.querySelector("#messageInput"),
   sendButton: document.querySelector("#sendButton"),
   composerHint: document.querySelector("#composerHint"),
@@ -86,6 +96,11 @@ const elements = {
 
 const COMPOSER_MIN_HEIGHT = 52;
 const COMPOSER_MAX_HEIGHT = 188;
+const NOTICE_AUTO_DISMISS_MS = 2600;
+const NOTICE_FADE_MS = 320;
+
+const noticeTimers = new Map();
+let pendingConfirmResolve = null;
 
 function formatErrorMessage(error) {
   if (error instanceof Error && error.message) {
@@ -107,6 +122,52 @@ function parseOptionalProjectId(value) {
 
 function getBaseUrl() {
   return normalizeBaseUrl(getState().backendBaseUrl);
+}
+
+function getNoticeElement(scope) {
+  if (scope === "projects") {
+    return elements.projectNotice;
+  }
+  if (scope === "sessions") {
+    return elements.sessionNotice;
+  }
+  if (scope === "chat") {
+    return elements.chatNotice;
+  }
+  if (scope === "global") {
+    return elements.globalNotice;
+  }
+  return null;
+}
+
+function clearNoticeTimer(scope) {
+  const timer = noticeTimers.get(scope);
+  if (timer) {
+    window.clearTimeout(timer);
+    noticeTimers.delete(scope);
+  }
+}
+
+function showTransientNotice(scope, message, variant = "info", duration = NOTICE_AUTO_DISMISS_MS) {
+  clearNoticeTimer(scope);
+  setNotice(scope, message, variant);
+
+  const timer = window.setTimeout(() => {
+    const element = getNoticeElement(scope);
+    if (element) {
+      element.classList.add("notice-fading");
+    }
+
+    window.setTimeout(() => {
+      clearNotice(scope);
+      if (element) {
+        element.classList.remove("notice-fading");
+      }
+    }, NOTICE_FADE_MS);
+    noticeTimers.delete(scope);
+  }, duration);
+
+  noticeTimers.set(scope, timer);
 }
 
 function buildAssistantDebug(responseData) {
@@ -177,6 +238,75 @@ function resetComposer() {
   textarea.value = "";
   textarea.style.height = `${COMPOSER_MIN_HEIGHT}px`;
   textarea.style.overflowY = "hidden";
+}
+
+function resetProjectForm() {
+  elements.projectForm.reset();
+  elements.projectAccessSelect.value = "open";
+}
+
+function closeProjectModal() {
+  setProjectModalState({ isOpen: false, mode: "create", projectId: null });
+  resetProjectForm();
+}
+
+function closeConfirmModal(result = false) {
+  if (elements.confirmModal) {
+    elements.confirmModal.classList.add("hidden");
+  }
+
+  const resolver = pendingConfirmResolve;
+  pendingConfirmResolve = null;
+  if (resolver) {
+    resolver(Boolean(result));
+  }
+}
+
+function openConfirmModal({
+  title = "确认操作",
+  body = "请确认是否继续。",
+  confirmLabel = "确认",
+  confirmVariant = "danger",
+}) {
+  if (!elements.confirmModal) {
+    return Promise.resolve(false);
+  }
+
+  if (pendingConfirmResolve) {
+    closeConfirmModal(false);
+  }
+
+  elements.confirmModalTitle.textContent = title;
+  elements.confirmModalBody.textContent = body;
+  elements.confirmAcceptButton.textContent = confirmLabel;
+  elements.confirmAcceptButton.className =
+    confirmVariant === "danger" ? "danger-button" : "primary-button";
+  elements.confirmModal.classList.remove("hidden");
+
+  return new Promise((resolve) => {
+    pendingConfirmResolve = resolve;
+  });
+}
+function openProjectCreateModal() {
+  resetProjectForm();
+  setProjectModalState({ isOpen: true, mode: "create", projectId: null });
+  setNewChatMenuOpen(false);
+}
+
+function openProjectEditModal(projectId) {
+  const state = getState();
+  const project = state.projects.find((item) => item.id === projectId) || null;
+  if (!project) {
+    setNotice("projects", "目标项目不存在，无法编辑。", "warning");
+    return;
+  }
+
+  elements.projectNameInput.value = project.name || "";
+  elements.projectDescriptionInput.value = project.description || "";
+  elements.projectAccessSelect.value = project.access_mode;
+  setProjectModalState({ isOpen: true, mode: "edit", projectId: project.id });
+  setNewChatMenuOpen(false);
+  clearNotice("projects");
 }
 
 async function ensureSessionMessages(sessionId, options = {}) {
@@ -301,13 +431,13 @@ async function refreshSessions(options = {}) {
   }
 }
 
-async function handleProjectCreate(event) {
+async function handleProjectSubmit(event) {
   event.preventDefault();
 
+  const state = getState();
   const payload = {
     name: elements.projectNameInput.value.trim(),
     description: elements.projectDescriptionInput.value.trim() || null,
-    access_mode: elements.projectAccessSelect.value,
   };
 
   if (!payload.name) {
@@ -317,13 +447,32 @@ async function handleProjectCreate(event) {
 
   try {
     setBusy("projects", true);
-    const project = await createProject(getBaseUrl(), payload);
-    setProjectModalOpen(false);
+
+    if (state.ui.projectModalMode === "edit") {
+      const projectId = state.ui.editingProjectId;
+      if (!projectId) {
+        setNotice("projects", "当前没有可编辑的项目。", "warning");
+        return;
+      }
+
+      const updated = await updateProject(getBaseUrl(), projectId, payload);
+      if (state.currentProjectId === updated.id) {
+        setSelectedProjectDetail(updated);
+      }
+      closeProjectModal();
+      showTransientNotice("projects", `项目 ${updated.name} 已更新。`, "success");
+      await refreshProjects({ silent: true });
+      return;
+    }
+
+    const project = await createProject(getBaseUrl(), {
+      ...payload,
+      access_mode: elements.projectAccessSelect.value,
+    });
+    closeProjectModal();
     setCurrentProjectId(project.id);
     setSelectedProjectDetail(project);
-    elements.projectForm.reset();
-    elements.projectAccessSelect.value = "open";
-    setNotice(
+    showTransientNotice(
       "projects",
       `项目 ${project.name} 已创建，访问模式为 ${getAccessModeLabel(project.access_mode)}。`,
       "success",
@@ -331,7 +480,8 @@ async function handleProjectCreate(event) {
     await refreshProjects({ silent: true });
     await refreshSessions({ silent: true });
   } catch (error) {
-    setNotice("projects", `创建项目失败：${formatErrorMessage(error)}`, "danger");
+    const actionText = state.ui.projectModalMode === "edit" ? "更新项目" : "创建项目";
+    setNotice("projects", `${actionText}失败：${formatErrorMessage(error)}`, "danger");
   } finally {
     setBusy("projects", false);
   }
@@ -339,19 +489,35 @@ async function handleProjectCreate(event) {
 
 function handleProjectSelect(projectId) {
   const state = getState();
-  if (state.currentProjectId === projectId) {
+  const isCurrent = state.currentProjectId === projectId;
+
+  if (isCurrent) {
     setCurrentProjectId(null);
     setSelectedProjectDetail(null);
+    setProjectExpanded(projectId, false);
     setNewChatMenuOpen(false);
     return;
   }
 
   syncProjectSelection(projectId);
+  setProjectExpanded(projectId, true);
   clearNotice("projects");
 }
 
 async function handleProjectDelete(projectId) {
   const state = getState();
+  const project = state.projects.find((item) => item.id === projectId) || null;
+  const confirmed = await openConfirmModal({
+    title: "删除项目",
+    body: project
+      ? `确认删除项目“${project.name}”？项目内会话、消息和摘要会一起删除。`
+      : "确认删除这个项目？项目内会话、消息和摘要会一起删除。",
+    confirmLabel: "确认删除",
+    confirmVariant: "danger",
+  });
+  if (!confirmed) {
+    return;
+  }
   const selectedSession = state.selectedSessionDetail;
   const deletingCurrentProject = state.currentProjectId === projectId;
   const deletingCurrentSession = selectedSession?.project_id === projectId;
@@ -367,7 +533,7 @@ async function handleProjectDelete(projectId) {
       removeSessionData(selectedSession.id);
       clearSessionSelection();
     }
-    setNotice("projects", response.message || "项目已删除。", "warning");
+    showTransientNotice("projects", response.message || "Project deleted.", "warning");
     await refreshProjects({ silent: true });
     await refreshSessions({ silent: true });
   } catch (error) {
@@ -389,7 +555,7 @@ async function createBlankSession(projectId = null) {
     setMessagesForSession(session.id, []);
     syncProjectSelection(session.project_id);
     setNewChatMenuOpen(false);
-    setNotice(
+    showTransientNotice(
       "sessions",
       projectId === null ? "已创建未归属会话。" : "已在当前项目下创建新会话。",
       "success",
@@ -453,7 +619,7 @@ async function handleArchiveSession(sessionId) {
   try {
     const session = await archiveSession(getBaseUrl(), sessionId);
     setSelectedSessionDetail(session);
-    setNotice("sessions", `会话 ${sessionId.slice(0, 10)} 已归档。`, "success");
+    setNotice("sessions", `会话 ${String(sessionId).slice(0, 10)} 已归档。`, "success");
     await refreshSessions({ silent: true, loadMessages: false });
   } catch (error) {
     setNotice("sessions", `归档失败：${formatErrorMessage(error)}`, "danger");
@@ -461,7 +627,20 @@ async function handleArchiveSession(sessionId) {
 }
 
 async function handleDeleteSession(sessionId) {
-  const deletingCurrentSession = getState().currentSessionId === sessionId;
+  const state = getState();
+  const deletingCurrentSession = state.currentSessionId === sessionId;
+  const session = state.sessions.find((item) => item.id === sessionId) || state.selectedSessionDetail;
+  const confirmed = await openConfirmModal({
+    title: "删除会话",
+    body: session?.title
+      ? `确认删除会话“${getSessionTitle(session.title)}”？消息和摘要会一起删除。`
+      : "确认删除这个会话？消息和摘要会一起删除。",
+    confirmLabel: "确认删除",
+    confirmVariant: "danger",
+  });
+  if (!confirmed) {
+    return;
+  }
 
   try {
     const response = await deleteSession(getBaseUrl(), sessionId);
@@ -469,7 +648,7 @@ async function handleDeleteSession(sessionId) {
     if (deletingCurrentSession) {
       clearSessionSelection();
     }
-    setNotice("sessions", response.message || "会话已删除。", "warning");
+    showTransientNotice("sessions", response.message || "Session deleted.", "warning");
     clearNotice("chat");
     await refreshSessions({ silent: true, loadMessages: false });
   } catch (error) {
@@ -622,20 +801,20 @@ function handleGlobalClick(event) {
     return;
   }
 
-  const projectToggle = event.target.closest("[data-project-toggle]");
-  if (projectToggle) {
-    const projectId = Number.parseInt(projectToggle.dataset.projectToggle, 10);
-    if (!Number.isNaN(projectId)) {
-      toggleProjectExpanded(projectId);
-    }
-    return;
-  }
-
   const projectSessionToggle = event.target.closest("[data-project-sessions-toggle]");
   if (projectSessionToggle) {
     const projectId = Number.parseInt(projectSessionToggle.dataset.projectSessionsToggle, 10);
     if (!Number.isNaN(projectId)) {
       toggleProjectSessionExpansion(projectId);
+    }
+    return;
+  }
+
+  const projectEdit = event.target.closest("[data-project-edit]");
+  if (projectEdit) {
+    const projectId = Number.parseInt(projectEdit.dataset.projectEdit, 10);
+    if (!Number.isNaN(projectId)) {
+      openProjectEditModal(projectId);
     }
     return;
   }
@@ -694,8 +873,7 @@ function handleGlobalClick(event) {
   }
 
   if (event.target.closest("#openProjectModalButton")) {
-    setProjectModalOpen(true);
-    setNewChatMenuOpen(false);
+    openProjectCreateModal();
     return;
   }
 
@@ -703,7 +881,21 @@ function handleGlobalClick(event) {
     event.target.closest("#closeProjectModalButton") ||
     event.target.closest("[data-close-project-modal]")
   ) {
-    setProjectModalOpen(false);
+    closeProjectModal();
+    return;
+  }
+
+  if (
+    event.target.closest("#closeConfirmModalButton") ||
+    event.target.closest("#confirmCancelButton") ||
+    event.target.closest("[data-close-confirm-modal]")
+  ) {
+    closeConfirmModal(false);
+    return;
+  }
+
+  if (event.target.closest("#confirmAcceptButton")) {
+    closeConfirmModal(true);
     return;
   }
 
@@ -718,19 +910,38 @@ function handleGlobalClick(event) {
     return;
   }
 
-  if (!event.target.closest("#newChatButton") && !event.target.closest("#newChatMenu")) {
+  if (
+    getState().ui.newChatMenuOpen &&
+    !event.target.closest("#newChatButton") &&
+    !event.target.closest("#newChatMenu")
+  ) {
     setNewChatMenuOpen(false);
   }
 }
 
+function handleGlobalKeydown(event) {
+  if (event.key !== "Escape") {
+    return;
+  }
+
+  if (pendingConfirmResolve) {
+    closeConfirmModal(false);
+    return;
+  }
+
+  if (!elements.projectModal.classList.contains("hidden")) {
+    closeProjectModal();
+  }
+}
 function wireEvents() {
   elements.newChatButton.addEventListener("click", handleNewChatClick);
-  elements.projectForm.addEventListener("submit", handleProjectCreate);
+  elements.projectForm.addEventListener("submit", handleProjectSubmit);
   elements.composerForm.addEventListener("submit", handleChatSubmit);
   elements.messageInput.addEventListener("keydown", handleComposerKeydown);
   elements.messageInput.addEventListener("input", resizeComposer);
   elements.quickChips.forEach((chip) => chip.addEventListener("click", handleQuickChipClick));
   document.addEventListener("click", handleGlobalClick);
+  document.addEventListener("keydown", handleGlobalKeydown);
 }
 
 function renderAll(state) {
@@ -748,3 +959,13 @@ async function bootstrap() {
 }
 
 bootstrap();
+
+
+
+
+
+
+
+
+
+

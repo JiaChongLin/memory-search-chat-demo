@@ -59,6 +59,8 @@ const state = {
       ),
     },
     projectModalOpen: false,
+    projectModalMode: "create",
+    editingProjectId: null,
     newChatMenuOpen: false,
   },
 };
@@ -325,6 +327,13 @@ export function toggleProjectExpanded(projectId) {
   });
 }
 
+export function setProjectExpanded(projectId, isExpanded) {
+  const key = String(projectId);
+  commit((draft) => {
+    draft.ui.sidebar.expandedProjectIds[key] = Boolean(isExpanded);
+  });
+}
+
 export function toggleProjectSessionExpansion(projectId) {
   const key = String(projectId);
   commit((draft) => {
@@ -333,20 +342,43 @@ export function toggleProjectSessionExpansion(projectId) {
   });
 }
 
-export function setProjectModalOpen(isOpen) {
+export function setProjectModalState({ isOpen, mode, projectId }) {
   commit(
     (draft) => {
-      draft.ui.projectModalOpen = Boolean(isOpen);
+      if (typeof isOpen === "boolean") {
+        draft.ui.projectModalOpen = isOpen;
+      }
+      if (mode) {
+        draft.ui.projectModalMode = mode;
+      }
+      if (projectId !== undefined) {
+        draft.ui.editingProjectId = projectId;
+      }
     },
     false,
   );
 }
 
+export function setProjectModalOpen(isOpen) {
+  setProjectModalState({
+    isOpen: Boolean(isOpen),
+    mode: isOpen ? state.ui.projectModalMode : "create",
+    projectId: isOpen ? state.ui.editingProjectId : null,
+  });
+}
+
 export function setNewChatMenuOpen(isOpen) {
+  const nextValue = Boolean(isOpen);
+  if (state.ui.newChatMenuOpen === nextValue) {
+    return;
+  }
+
   commit(
     (draft) => {
-      draft.ui.newChatMenuOpen = Boolean(isOpen);
+      draft.ui.newChatMenuOpen = nextValue;
     },
     false,
   );
 }
+
+

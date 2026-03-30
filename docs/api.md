@@ -105,6 +105,19 @@
 
 查看单个项目。
 
+### PATCH /api/projects/{project_id}
+
+更新项目。当前只允许修改：`name`、`description`。`access_mode` 创建后不可修改。
+
+请求体示例：
+
+```json
+{
+  "name": "新的项目名称",
+  "description": "新的项目描述"
+}
+```
+
 ### DELETE /api/projects/{project_id}
 
 硬删除项目，并级联删除项目内全部会话、消息和摘要。
