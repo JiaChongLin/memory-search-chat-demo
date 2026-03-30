@@ -1,4 +1,4 @@
-﻿import {
+import {
   DEFAULT_BACKEND_BASE_URL,
   loadPersistedState,
   persistStateSnapshot,
@@ -8,6 +8,14 @@ export const DRAFT_SESSION_KEY = "__draft__";
 
 const persisted = loadPersistedState();
 const listeners = new Set();
+
+function toBooleanMap(values) {
+  const result = {};
+  for (const value of values || []) {
+    result[String(value)] = true;
+  }
+  return result;
+}
 
 const state = {
   backendBaseUrl: persisted.backendBaseUrl || DEFAULT_BACKEND_BASE_URL,
@@ -20,7 +28,6 @@ const state = {
   sessions: [],
   selectedProjectDetail: null,
   selectedSessionDetail: null,
-  filterSessionsByProject: true,
   health: {
     status: "idle",
     label: "未检测",
@@ -38,7 +45,39 @@ const state = {
     sessions: false,
     chat: false,
   },
+  ui: {
+    sidebar: {
+      collapsedSections: {
+        projects: Boolean(persisted.sidebar?.collapsedSections?.projects),
+        unassigned: Boolean(persisted.sidebar?.collapsedSections?.unassigned),
+      },
+      showAllProjects: Boolean(persisted.sidebar?.showAllProjects),
+      expandedProjectIds: toBooleanMap(persisted.sidebar?.expandedProjectIds),
+      expandedProjectSessionIds: toBooleanMap(
+        persisted.sidebar?.expandedProjectSessionIds,
+      ),
+    },
+    projectModalOpen: false,
+    newChatMenuOpen: false,
+  },
 };
+
+function buildPersistedSidebarState() {
+  return {
+    collapsedSections: {
+      ...state.ui.sidebar.collapsedSections,
+    },
+    showAllProjects: state.ui.sidebar.showAllProjects,
+    expandedProjectIds: Object.entries(state.ui.sidebar.expandedProjectIds)
+      .filter(([, value]) => value)
+      .map(([key]) => Number.parseInt(key, 10))
+      .filter((value) => !Number.isNaN(value)),
+    expandedProjectSessionIds: Object.entries(state.ui.sidebar.expandedProjectSessionIds)
+      .filter(([, value]) => value)
+      .map(([key]) => Number.parseInt(key, 10))
+      .filter((value) => !Number.isNaN(value)),
+  };
+}
 
 function persist() {
   persistStateSnapshot({
@@ -47,6 +86,7 @@ function persist() {
     currentSessionId: state.currentSessionId,
     summaryMap: state.summaryMap,
     messageMap: state.messageMap,
+    sidebar: buildPersistedSidebarState(),
   });
 }
 
@@ -181,12 +221,6 @@ export function clearNotice(scope) {
   setNotice(scope, null);
 }
 
-export function setFilterSessionsByProject(enabled) {
-  commit((draft) => {
-    draft.filterSessionsByProject = Boolean(enabled);
-  }, false);
-}
-
 export function setSummaryForSession(sessionId, summary) {
   if (!sessionId) {
     return;
@@ -246,5 +280,43 @@ export function setChatDebug(sessionId, debug) {
 
   commit((draft) => {
     draft.chatDebugMap[sessionId] = debug;
+  }, false);
+}
+
+export function toggleSidebarSection(sectionKey) {
+  commit((draft) => {
+    draft.ui.sidebar.collapsedSections[sectionKey] = !draft.ui.sidebar.collapsedSections[sectionKey];
+  });
+}
+
+export function toggleShowAllProjects() {
+  commit((draft) => {
+    draft.ui.sidebar.showAllProjects = !draft.ui.sidebar.showAllProjects;
+  });
+}
+
+export function toggleProjectExpanded(projectId) {
+  const key = String(projectId);
+  commit((draft) => {
+    draft.ui.sidebar.expandedProjectIds[key] = !draft.ui.sidebar.expandedProjectIds[key];
+  });
+}
+
+export function toggleProjectSessionExpansion(projectId) {
+  const key = String(projectId);
+  commit((draft) => {
+    draft.ui.sidebar.expandedProjectSessionIds[key] = !draft.ui.sidebar.expandedProjectSessionIds[key];
+  });
+}
+
+export function setProjectModalOpen(isOpen) {
+  commit((draft) => {
+    draft.ui.projectModalOpen = Boolean(isOpen);
+  }, false);
+}
+
+export function setNewChatMenuOpen(isOpen) {
+  commit((draft) => {
+    draft.ui.newChatMenuOpen = Boolean(isOpen);
   }, false);
 }

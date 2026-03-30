@@ -134,7 +134,7 @@ function renderSummary(state, elements) {
 
   elements.summaryText.textContent = state.currentSessionId
     ? "当前选中会话还没有本地缓存摘要。只有本页面发起的聊天响应会更新这里的摘要显示。"
-    : "当前没有选中会话。请先在中间栏创建或选择会话，然后再到右侧聊天区发消息。";
+    : "当前没有选中会话。请先在左侧导航中创建或选择会话，然后再到右侧聊天区发消息。";
   elements.summaryBadge.className = "badge neutral";
   elements.summaryBadge.textContent = "无摘要";
 }
@@ -154,7 +154,7 @@ function renderComposerState(state, elements) {
   }
 
   if (missingSelection) {
-    elements.composerHint.textContent = "请先在中间栏创建或选择一个会话，然后才能发送消息。";
+    elements.composerHint.textContent = "请先在左侧导航中创建或选择一个会话，然后才能发送消息。";
     return;
   }
 
@@ -169,7 +169,7 @@ function renderComposerState(state, elements) {
 function renderSelectionHint(state, elements) {
   const session = state.selectedSessionDetail;
   if (!session) {
-    elements.selectionHint.textContent = "请先在中间栏显式选择或创建会话。当前未选中会话时，右侧聊天区不会直接发送消息。";
+    elements.selectionHint.textContent = "请先在左侧导航中显式选择或创建会话。当前未选中会话时，右侧聊天区不会直接发送消息。";
     return;
   }
 
@@ -234,7 +234,7 @@ function renderMessages(state, elements) {
     elements.chatEmptyState.hidden = false;
     elements.chatEmptyState.textContent = state.currentSessionId
       ? "当前会话没有本地渲染过的消息。后端没有提供完整消息查询接口，所以这里只显示本页面期间缓存过的消息。"
-      : "当前未选中会话。请先在中间栏选择已有会话，或先创建一个空白会话。";
+      : "当前未选中会话。请先在左侧导航中选择已有会话，或先创建一个空白会话。";
     return;
   }
 

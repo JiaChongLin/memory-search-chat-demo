@@ -1,9 +1,8 @@
-﻿import {
+import {
   getAccessModeHelpText,
   getAccessModeLabel,
   getPrivacyHelpText,
   getPrivacyLabel,
-  getProjectBindingLabel,
   getSessionTitle,
   getStatusLabel,
 } from "./labels.js";
@@ -36,108 +35,259 @@ function renderNotice(element, notice) {
   element.textContent = notice.message;
 }
 
-function renderProjectDetail(state, elements) {
-  const project = state.selectedProjectDetail;
-  elements.currentProjectLabel.textContent = project ? `${project.name} (#${project.id})` : "未选中";
-
-  if (!project) {
-    elements.projectDetail.className = "detail-card empty-card";
-    elements.projectDetail.innerHTML = "未选中项目，可先创建或从列表中选择。";
-    return;
-  }
-
-  const description = project.description
-    ? `<p class="detail-copy">${escapeHtml(project.description)}</p>`
-    : '<p class="detail-copy muted">没有描述。</p>';
-
-  elements.projectDetail.className = "detail-card";
-  elements.projectDetail.innerHTML = `
-    <div class="detail-head">
-      <strong>${escapeHtml(project.name)}</strong>
-      <div class="tag-row">
-        ${badge(getAccessModeLabel(project.access_mode), "scope")}
-        ${badge(getStatusLabel(project.status), project.status === "active" ? "success" : "warning")}
-      </div>
-    </div>
-    ${description}
-    <p class="detail-copy">${escapeHtml(getAccessModeHelpText(project.access_mode))}</p>
-    <div class="detail-meta">
-      <span>项目 ID: ${project.id}</span>
-      <span>创建时间: ${escapeHtml(project.created_at || "-")}</span>
-    </div>
-  `;
+function getProjectSessions(state, projectId) {
+  return state.sessions.filter((session) => session.project_id === projectId);
 }
 
-function renderProjectList(state, elements) {
-  if (!state.projects.length) {
-    elements.projectList.innerHTML = '<div class="empty-card">当前没有项目。先创建一个项目，再测试开放项目和仅限项目的访问边界。</div>';
-    return;
-  }
+function getUnassignedSessions(state) {
+  return state.sessions.filter((session) => session.project_id === null);
+}
 
-  elements.projectList.innerHTML = state.projects
-    .map((project) => {
-      const selected = state.currentProjectId === project.id ? "selected" : "";
+function renderSidebarProjectItem(state, project) {
+  const sessions = getProjectSessions(state, project.id);
+  const isSelected = state.currentProjectId === project.id;
+  const isExpanded = Boolean(state.ui.sidebar.expandedProjectIds[String(project.id)]);
+  const showAllSessions = Boolean(
+    state.ui.sidebar.expandedProjectSessionIds[String(project.id)],
+  );
+  const visibleSessions = showAllSessions ? sessions : sessions.slice(0, 5);
+  const hasMoreSessions = sessions.length > 5;
+
+  const sessionRows = visibleSessions
+    .map((session) => {
+      const sessionSelected = state.currentSessionId === session.id ? "selected" : "";
       return `
-        <article class="entity-card ${selected}">
-          <button class="entity-main" type="button" data-project-select="${project.id}">
-            <div class="entity-title-row">
-              <strong>${escapeHtml(project.name)}</strong>
-              <span class="entity-id">#${project.id}</span>
-            </div>
-            <div class="tag-row">
-              ${badge(getAccessModeLabel(project.access_mode), "scope")}
-              ${badge(getStatusLabel(project.status), project.status === "active" ? "success" : "warning")}
-            </div>
-          </button>
-        </article>
+        <button
+          class="nav-session-item ${sessionSelected}"
+          type="button"
+          data-session-select="${escapeHtml(session.id)}"
+        >
+          <span class="nav-session-title">${escapeHtml(getSessionTitle(session.title))}</span>
+          <span class="nav-session-tags">
+            ${session.is_private ? badge("私密", "danger") : ""}
+            ${session.status === "archived" ? badge("归档", "warning") : ""}
+            ${session.status === "deleted" ? badge("已删除", "danger") : ""}
+          </span>
+        </button>
       `;
     })
     .join("");
+
+  return `
+    <article class="nav-project-card ${isSelected ? "selected" : ""}">
+      <div class="nav-project-top">
+        <button
+          class="nav-project-main"
+          type="button"
+          data-project-select="${project.id}"
+        >
+          <span class="nav-project-title-row">
+            <strong>${escapeHtml(project.name)}</strong>
+            <span class="nav-count">${sessions.length}</span>
+          </span>
+          <span class="nav-project-meta">
+            ${badge(project.access_mode === "open" ? "开放" : "仅限项目", "scope")}
+            ${project.status !== "active" ? badge(getStatusLabel(project.status), "warning") : ""}
+          </span>
+        </button>
+        <button
+          class="nav-toggle-button"
+          type="button"
+          data-project-toggle="${project.id}"
+          aria-expanded="${isExpanded}"
+          title="${isExpanded ? "折叠项目" : "展开项目"}"
+        >
+          ${isExpanded ? "▾" : "▸"}
+        </button>
+      </div>
+      ${
+        isExpanded
+          ? `
+            <div class="nav-project-children">
+              ${
+                sessions.length
+                  ? `
+                    <div class="nav-session-list">
+                      ${sessionRows}
+                    </div>
+                    ${
+                      hasMoreSessions
+                        ? `<button class="nav-more-button" type="button" data-project-sessions-toggle="${project.id}">${showAllSessions ? "收起" : "更多"}</button>`
+                        : ""
+                    }
+                  `
+                  : '<div class="nav-empty">这个项目下还没有会话。</div>'
+              }
+            </div>
+          `
+          : ""
+      }
+    </article>
+  `;
 }
 
-function renderSessionDetail(state, elements) {
+function renderProjectsSection(state, elements) {
+  const collapsed = state.ui.sidebar.collapsedSections.projects;
+  const showAllProjects = state.ui.sidebar.showAllProjects;
+  const projects = showAllProjects ? state.projects : state.projects.slice(0, 5);
+  const hasMoreProjects = state.projects.length > 5;
+
+  elements.projectsSection.innerHTML = `
+    <div class="sidebar-section-head">
+      <button class="sidebar-section-toggle" type="button" data-section-toggle="projects">
+        <span>项目</span>
+        <span class="sidebar-toggle-icon">${collapsed ? "▸" : "▾"}</span>
+      </button>
+      <button id="openProjectModalButton" class="icon-button" type="button" title="新项目">＋</button>
+    </div>
+    ${
+      collapsed
+        ? ""
+        : `
+          <div class="sidebar-section-body">
+            <div class="sidebar-note">项目访问模式创建后暂不支持修改。</div>
+            <div class="nav-list">
+              ${
+                projects.length
+                  ? projects.map((project) => renderSidebarProjectItem(state, project)).join("")
+                  : '<div class="nav-empty">还没有项目，先创建一个开放项目或仅限项目。</div>'
+              }
+            </div>
+            ${
+              hasMoreProjects
+                ? `<button class="nav-more-button" type="button" data-projects-more-toggle="true">${showAllProjects ? "收起项目" : "更多项目"}</button>`
+                : ""
+            }
+          </div>
+        `
+    }
+  `;
+}
+
+function renderUnassignedSection(state, elements) {
+  const collapsed = state.ui.sidebar.collapsedSections.unassigned;
+  const sessions = getUnassignedSessions(state);
+
+  elements.unassignedSection.innerHTML = `
+    <div class="sidebar-section-head">
+      <button class="sidebar-section-toggle" type="button" data-section-toggle="unassigned">
+        <span>未归属会话</span>
+        <span class="sidebar-toggle-icon">${collapsed ? "▸" : "▾"}</span>
+      </button>
+    </div>
+    ${
+      collapsed
+        ? ""
+        : `
+          <div class="sidebar-section-body">
+            <div class="unassigned-list">
+              ${
+                sessions.length
+                  ? sessions
+                      .map((session) => {
+                        const selected =
+                          state.currentSessionId === session.id ? "selected" : "";
+                        return `
+                          <button
+                            class="nav-session-item ${selected}"
+                            type="button"
+                            data-session-select="${escapeHtml(session.id)}"
+                          >
+                            <span class="nav-session-title">${escapeHtml(getSessionTitle(session.title))}</span>
+                            <span class="nav-session-tags">
+                              ${session.is_private ? badge("私密", "danger") : ""}
+                              ${session.status === "archived" ? badge("归档", "warning") : ""}
+                              ${session.status === "deleted" ? badge("已删除", "danger") : ""}
+                            </span>
+                          </button>
+                        `;
+                      })
+                      .join("")
+                  : '<div class="nav-empty">暂时没有未归属会话。</div>'
+              }
+            </div>
+          </div>
+        `
+    }
+  `;
+}
+
+function renderCurrentSessionPanel(state, elements) {
   const session = state.selectedSessionDetail;
-  elements.currentSessionLabel.textContent = session ? `${session.id.slice(0, 12)}...` : "未选中";
+  const project = state.projects.find((item) => item.id === session?.project_id) || null;
+
+  elements.currentProjectLabel.textContent = state.selectedProjectDetail
+    ? state.selectedProjectDetail.name
+    : "未选中";
+  elements.currentSessionLabel.textContent = session
+    ? getSessionTitle(session.title)
+    : "未选中";
 
   if (!session) {
-    elements.sessionDetail.className = "detail-card empty-card";
-    elements.sessionDetail.innerHTML = "未选中会话。请先创建空白会话，或从列表中选择已有会话后再聊天。";
+    elements.sessionDetail.innerHTML = `
+      <div class="detail-card empty-card">
+        左侧选择一个会话后，右侧会显示当前会话状态、归属项目和会话操作。
+      </div>
+    `;
     elements.sessionBanner.className = "notice info";
-    elements.sessionBanner.textContent = "当前未选中会话。右侧聊天区会禁止发送消息，直到你显式选择或创建一个会话。";
+    elements.sessionBanner.textContent =
+      "当前未选中会话。发送框会保持禁用，直到你在左侧导航中选择或创建会话。";
     return;
   }
 
-  const project = state.projects.find((item) => item.id === session.project_id);
-  const projectLabel = project ? `${project.name} (#${project.id})` : "无项目会话";
-
-  elements.sessionDetail.className = "detail-card";
   elements.sessionDetail.innerHTML = `
-    <div class="detail-head">
-      <strong>${escapeHtml(getSessionTitle(session.title))}</strong>
-      <div class="tag-row">
-        ${badge(getPrivacyLabel(session.is_private), session.is_private ? "danger" : "soft")}
-        ${badge(getStatusLabel(session.status), session.status === "active" ? "success" : session.status === "archived" ? "warning" : "danger")}
-        ${badge(getProjectBindingLabel(session.project_id), "soft")}
+    <div class="detail-card">
+      <div class="detail-head">
+        <strong>${escapeHtml(getSessionTitle(session.title))}</strong>
+        <div class="tag-row">
+          ${badge(session.project_id ? "已归属项目" : "未归属会话", "soft")}
+          ${badge(getPrivacyLabel(session.is_private), session.is_private ? "danger" : "soft")}
+          ${badge(
+            getStatusLabel(session.status),
+            session.status === "active"
+              ? "success"
+              : session.status === "archived"
+                ? "warning"
+                : "danger",
+          )}
+        </div>
       </div>
-    </div>
-    <p class="detail-copy">${escapeHtml(getPrivacyHelpText(session.is_private))}</p>
-    <div class="detail-meta stacked">
-      <span>会话 ID: ${escapeHtml(session.id)}</span>
-      <span>项目归属: ${escapeHtml(projectLabel)}</span>
-      <span>当前可见性: ${escapeHtml(getPrivacyLabel(session.is_private))}</span>
-      <span>更新时间: ${escapeHtml(session.updated_at || "-")}</span>
+      <p class="detail-copy">${escapeHtml(getPrivacyHelpText(session.is_private))}</p>
+      <div class="detail-meta stacked">
+        <span>会话 ID: ${escapeHtml(session.id)}</span>
+        <span>所属项目: ${escapeHtml(project ? project.name : "无项目会话")}</span>
+        ${
+          project
+            ? `<span>项目访问模式: ${escapeHtml(getAccessModeLabel(project.access_mode))}</span>`
+            : "<span>项目访问模式: 无项目，按开放历史处理</span>"
+        }
+        <span>更新时间: ${escapeHtml(session.updated_at || "-")}</span>
+      </div>
+      <div class="session-actions-card">
+        <label class="field-label" for="moveProjectSelect">移动到项目</label>
+        <div class="inline-row">
+          <select id="moveProjectSelect" class="select-input"></select>
+          <button id="moveSessionButton" class="secondary-button" type="button">移动</button>
+        </div>
+        <div class="inline-row action-stack">
+          <button id="archiveSessionButton" class="ghost-button" type="button">归档会话</button>
+          <button id="deleteSessionButton" class="danger-button" type="button">软删除会话</button>
+        </div>
+      </div>
     </div>
   `;
 
   if (session.status === "deleted") {
     elements.sessionBanner.className = "notice danger";
-    elements.sessionBanner.textContent = "当前会话已被软删除。页面会保留状态展示，但禁止继续向这个会话发消息。";
+    elements.sessionBanner.textContent =
+      "当前会话已被软删除。右侧会保留状态展示，但会禁止继续发送消息。";
     return;
   }
 
   if (session.status === "archived") {
     elements.sessionBanner.className = "notice warning";
-    elements.sessionBanner.textContent = "当前会话已归档。页面会保留状态展示，但禁止继续向这个会话发消息。";
+    elements.sessionBanner.textContent =
+      "当前会话已归档。右侧会保留状态展示，但会禁止继续发送消息。";
     return;
   }
 
@@ -145,58 +295,56 @@ function renderSessionDetail(state, elements) {
   elements.sessionBanner.textContent = "";
 }
 
-function renderSessionList(state, elements) {
-  if (!state.sessions.length) {
-    elements.sessionList.innerHTML = '<div class="empty-card">当前筛选下没有会话。你可以创建一个空白会话，或切换成“全部”查看。</div>';
-    return;
-  }
-
-  elements.sessionList.innerHTML = state.sessions
-    .map((session) => {
-      const selected = state.currentSessionId === session.id ? "selected" : "";
-      return `
-        <article class="entity-card ${selected}">
-          <button class="entity-main" type="button" data-session-select="${escapeHtml(session.id)}">
-            <div class="entity-title-row">
-              <strong>${escapeHtml(getSessionTitle(session.title))}</strong>
-              <span class="entity-id">${escapeHtml(session.id.slice(0, 10))}</span>
-            </div>
-            <div class="tag-row">
-              ${badge(session.project_id ? `归属项目 #${session.project_id}` : "无项目会话", "soft")}
-              ${badge(getPrivacyLabel(session.is_private), session.is_private ? "danger" : "soft")}
-              ${badge(getStatusLabel(session.status), session.status === "active" ? "success" : session.status === "archived" ? "warning" : "danger")}
-            </div>
-          </button>
-          <div class="entity-actions">
-            <button class="mini-button" type="button" data-session-archive="${escapeHtml(session.id)}">归档</button>
-            <button class="mini-button danger" type="button" data-session-delete="${escapeHtml(session.id)}">删除</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+function renderConnectionBox(state, elements) {
+  elements.healthBadge.className = `badge ${state.health.status || "neutral"}`;
+  elements.healthBadge.textContent = state.health.label;
+  elements.environmentValue.textContent = state.health.environment || "未知";
+  elements.backendBaseUrl.value = state.backendBaseUrl;
 }
 
 function renderProjectSelectOptions(state, elements) {
-  const sessionOptions = [
-    '<option value="">无项目会话</option>',
-    ...state.projects.map(
-      (project) => `<option value="${project.id}">${escapeHtml(project.name)} (#${project.id})</option>`,
-    ),
-  ];
+  const moveSelect = document.querySelector("#moveProjectSelect");
+  if (!moveSelect) {
+    return;
+  }
 
-  const preferredValue = state.currentProjectId ? String(state.currentProjectId) : "";
-  elements.sessionProjectSelect.innerHTML = sessionOptions.join("");
-  elements.sessionProjectSelect.value = preferredValue;
-
-  const moveOptions = [
+  moveSelect.innerHTML = [
     '<option value="">选择目标项目</option>',
-    '<option value="__none__">移出当前项目，变成无项目会话</option>',
+    '<option value="__none__">移出当前项目，变成未归属会话</option>',
     ...state.projects.map(
-      (project) => `<option value="${project.id}">${escapeHtml(project.name)} (#${project.id})</option>`,
+      (project) =>
+        `<option value="${project.id}">${escapeHtml(project.name)} (${escapeHtml(
+          getAccessModeLabel(project.access_mode),
+        )})</option>`,
     ),
-  ];
-  elements.moveProjectSelect.innerHTML = moveOptions.join("");
+  ].join("");
+}
+
+function renderNewChatMenu(state, elements) {
+  const project = state.selectedProjectDetail;
+  const isOpen = state.ui.newChatMenuOpen && Boolean(project);
+
+  elements.newChatMenu.className = isOpen ? "floating-menu" : "floating-menu hidden";
+  if (!isOpen) {
+    elements.newChatMenu.innerHTML = "";
+    return;
+  }
+
+  elements.newChatMenu.innerHTML = `
+    <p class="floating-menu-copy">
+      当前已选中项目 <strong>${escapeHtml(project.name)}</strong>。新聊天默认可以创建到当前项目，也可以保留为未归属会话。
+    </p>
+    <div class="floating-menu-actions">
+      <button id="createChatInProjectButton" class="secondary-button" type="button">创建到当前项目</button>
+      <button id="createUnassignedChatButton" class="ghost-button" type="button">创建为未归属会话</button>
+    </div>
+  `;
+}
+
+function renderProjectModal(state, elements) {
+  elements.projectModal.className = state.ui.projectModalOpen
+    ? "modal-shell"
+    : "modal-shell hidden";
 }
 
 export function renderManagement(state, elements) {
@@ -204,24 +352,30 @@ export function renderManagement(state, elements) {
   renderNotice(elements.projectNotice, state.notices.projects);
   renderNotice(elements.sessionNotice, state.notices.sessions);
 
-  elements.healthBadge.className = `badge ${state.health.status || "neutral"}`;
-  elements.healthBadge.textContent = state.health.label;
-  elements.environmentValue.textContent = state.health.environment || "未知";
-  elements.backendBaseUrl.value = state.backendBaseUrl;
-  elements.filterSessionsByProject.checked = state.filterSessionsByProject;
-
-  renderProjectDetail(state, elements);
-  renderProjectList(state, elements);
-  renderSessionDetail(state, elements);
-  renderSessionList(state, elements);
+  renderConnectionBox(state, elements);
+  renderProjectsSection(state, elements);
+  renderUnassignedSection(state, elements);
+  renderCurrentSessionPanel(state, elements);
   renderProjectSelectOptions(state, elements);
+  renderNewChatMenu(state, elements);
+  renderProjectModal(state, elements);
 
-  const hasSelectedSession = Boolean(state.selectedSessionDetail);
+  const archiveButton = document.querySelector("#archiveSessionButton");
+  const deleteButton = document.querySelector("#deleteSessionButton");
+  const moveButton = document.querySelector("#moveSessionButton");
   const selectedSessionLocked = ["archived", "deleted"].includes(
     state.selectedSessionDetail?.status,
   );
+  const hasSelectedSession = Boolean(state.selectedSessionDetail);
 
-  elements.archiveSessionButton.disabled = !hasSelectedSession || selectedSessionLocked;
-  elements.deleteSessionButton.disabled = !hasSelectedSession || state.selectedSessionDetail?.status === "deleted";
-  elements.moveSessionButton.disabled = !hasSelectedSession || selectedSessionLocked;
+  if (archiveButton) {
+    archiveButton.disabled = !hasSelectedSession || selectedSessionLocked;
+  }
+  if (deleteButton) {
+    deleteButton.disabled =
+      !hasSelectedSession || state.selectedSessionDetail?.status === "deleted";
+  }
+  if (moveButton) {
+    moveButton.disabled = !hasSelectedSession || selectedSessionLocked;
+  }
 }
