@@ -1,4 +1,4 @@
-# memory-search-chat-demo
+﻿# memory-search-chat-demo
 
 一个面向学习与展示的最小可运行 Web 聊天应用 Demo，目标是围绕“多轮对话 + 基础记忆 + 联网搜索”搭建一条尽量清晰、容易理解的实现路径。
 
@@ -22,8 +22,10 @@
 
 - 已完成一版基于 FastAPI 的后端基础骨架
 - 后端当前已拆分为配置层、接口层、服务层、数据模型层，便于后续继续扩写
-- 聊天接口已经具备最小闭环：可接收消息、按 `session` 组织上下文、维护简化摘要，并预留联网搜索与真实模型接入位置
-- 前端联调、SQLite 持久化和真实搜索服务仍在继续补充
+- 聊天接口已经具备可直接演示的闭环：可接收消息、按 `session` 组织上下文、维护简化摘要、触发联网搜索，并在模型失败时自动降级
+- 已接入 SQLite 持久化记忆，会话消息与摘要可以落库保存
+- 已补充开发环境 CORS 与基础错误响应，便于前端本地联调
+- 已补入纯静态前端 demo 页面，可直接展示聊天、记忆摘要、搜索来源与模型降级状态
 
 ### 设计目标
 
@@ -86,27 +88,25 @@ memory-search-chat-demo/
 |-- .gitignore
 |-- backend/
 |   `-- app/
-|       |-- __init__.py
 |       |-- main.py
 |       |-- api/
-|       |   |-- __init__.py
 |       |   `-- chat.py
 |       |-- core/
-|       |   |-- __init__.py
 |       |   `-- config.py
 |       |-- db/
-|       |   |-- __init__.py
-|       |   `-- models.py
+|       |   |-- models.py
+|       |   `-- session.py
 |       |-- schemas/
-|       |   |-- __init__.py
 |       |   `-- chat.py
 |       `-- services/
-|           |-- __init__.py
 |           |-- chat_service.py
 |           |-- llm_service.py
 |           |-- memory_service.py
 |           `-- search_service.py
 |-- frontend/
+|   |-- index.html
+|   |-- app.js
+|   `-- styles.css
 |-- LICENSE
 |-- README.md
 `-- requirements.txt
@@ -123,11 +123,12 @@ memory-search-chat-demo/
 - `backend/app/services/search_service.py`：负责搜索触发判断与搜索接入边界
 - `backend/app/services/llm_service.py`：负责百炼模型调用封装
 - `backend/app/db/models.py`：SQLite 相关数据模型定义
-- `frontend/`：前端目录已预留，当前版本还未补入页面文件
-- `.env.example`：根目录环境变量模板，当前先放大语言模型相关配置
+- `backend/app/db/session.py`：数据库 engine、SessionLocal、get_db 和建表初始化
+- `frontend/index.html`：静态 demo 页面入口
+- `frontend/app.js`：聊天请求、会话缓存和状态渲染逻辑
+- `frontend/styles.css`：前端 demo 的布局与视觉样式
+- `.env.example`：根目录环境变量模板，当前包含数据库与大语言模型相关配置
 - `requirements.txt`：当前后端骨架所需的最小依赖列表
-
-当前这一节展示的是仓库里的真实目录结构；后续随着前端和持久化模块补齐，再继续同步更新。
 
 ## 6. 核心处理流程
 
@@ -209,7 +210,7 @@ pip install -r requirements.txt
 - `pydantic`
 - `sqlalchemy`
 
-如果后续接入具体的模型服务 SDK、搜索 SDK 或数据库迁移工具，再按实际需要补充。
+目前额外使用了 `httpx` 处理搜索请求；如果后续接入更完整的搜索 SDK 或数据库迁移工具，再按实际需要补充。
 
 ### 4. 配置根目录 `.env`
 
@@ -229,13 +230,20 @@ macOS / Linux:
 cp .env.example .env
 ```
 
-当前版本的 `.env.example` 先只包含大语言模型相关配置，优先面向阿里云百炼平台，后续再逐步补充搜索、数据库和其他运行参数。
+当前版本的 .env.example 已包含数据库和大语言模型的基础配置。
+
+- DATABASE_URL：数据库连接地址，默认使用本地 SQLite
+- LLM_PROVIDER / LLM_API_KEY / LLM_MODEL / LLM_BASE_URL：百炼平台模型调用配置
+
+当前版本已经补入搜索、记忆和模型降级相关参数，可直接用于本地 demo。
 
 ### 5. 启动后端
 
 ```bash
 uvicorn backend.app.main:app --reload
 ```
+
+应用启动时会自动根据当前模型定义创建数据库表。
 
 默认情况下，后端可以运行在：
 
@@ -248,9 +256,16 @@ http://127.0.0.1:8000
 - `http://127.0.0.1:8000/health`
 - `http://127.0.0.1:8000/docs`
 
+开发环境中，后端当前默认允许这些本地前端来源：
+
+- `http://localhost:5500`
+- `http://127.0.0.1:5500`
+- `http://localhost:3000`
+- `http://127.0.0.1:3000`
+
 ### 6. 启动前端
 
-如果前端保持为纯静态页面，可以直接在 `frontend/` 目录下使用一个简单静态服务器：
+当前前端是纯静态页面，可以直接在 `frontend/` 目录下使用一个简单静态服务器：
 
 ```bash
 cd frontend
@@ -263,12 +278,31 @@ python -m http.server 5500
 http://127.0.0.1:5500
 ```
 
+页面打开后建议按这个顺序测试：
+
+1. 左侧点击“检查后端”，确认健康检查通过
+2. 发送一条普通消息，确认前端已拿到 `session_id`
+3. 连续发送 2 到 3 条带个人信息的消息，观察“当前摘要”是否开始出现
+4. 发送 `today latest ai news` 或“现在英伟达股价是多少？”之类的问题，观察是否触发搜索
+5. 留意助手消息下方的状态标签：
+   - `在线模型`：这次回复来自真实模型
+   - `本地降级`：这次回复走了后端降级路径
+   - `已使用搜索结果`：这次回复附带了搜索来源
+   - `原因：...`：显示降级或异常的简要原因
+
+如需先验证后端接口，可在项目根目录运行：
+
+```bash
+pytest tests/test_chat_api.py -q
+```
+
 ### 7. 配置说明
 
 当前建议通过根目录 `.env` 管理运行配置，并在后端统一读取。
 
-目前已写入模板的配置项主要是大语言模型：
+目前已写入模板的配置项包括数据库和大语言模型：
 
+- `DATABASE_URL`：数据库连接地址，默认使用本地 SQLite
 - `LLM_PROVIDER`：模型服务提供方，当前建议为 `dashscope`
 - `LLM_API_KEY`：百炼平台 API Key
 - `LLM_MODEL`：默认模型名称，例如 `qwen-plus`
@@ -276,13 +310,12 @@ http://127.0.0.1:5500
 
 建议在后端通过 `backend/app/core/config.py` 统一读取这些配置。
 
-搜索服务、数据库路径、记忆窗口等参数可以等后续实现对应模块时再补充进 `.env`。
+当前 `.env.example` 已包含搜索服务、记忆窗口、模型超时与降级等运行参数。
 
 ## 8. 后续计划
 
-- 补充 SQLite 持久化与数据库初始化逻辑
-- 完成前端聊天页面与接口联调
-- 增加会话摘要更新逻辑
+- 增加会话查询或调试辅助接口
+- 继续优化前端聊天页面与中文显示体验
 - 增加基于关键词或规则的搜索触发
 - 抽离 LLM Service 与 Search Service，降低耦合
 - 增加基础日志与错误处理
@@ -295,3 +328,5 @@ http://127.0.0.1:5500
 ---
 
 如果你正在寻找一个“结构不复杂、便于理解、可以逐步扩展”的聊天应用示例，这个仓库会更适合作为起点，而不是一个已经封装完善的通用框架。
+
+

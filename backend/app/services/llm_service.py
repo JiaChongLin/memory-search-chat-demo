@@ -1,7 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Optional
 from urllib import error, request
 
 from backend.app.core.config import Settings
@@ -10,20 +11,21 @@ from backend.app.services.search_service import SearchResult
 
 
 SYSTEM_PROMPT = (
-    "你是一个面向 demo 项目的中文聊天助手。"
-    "回答要尽量清晰、简洁、可靠。"
-    "如果上下文中包含会话摘要或搜索结果，请优先结合这些信息回答。"
+    "你是一个用于 demo 的聊天助手。"
+    "请基于用户输入、会话历史、会话摘要和搜索上下文生成简洁回答。"
+    "如果搜索结果为空，就不要假装引用了实时信息；如果信息不足，可以明确说明。"
 )
 
 
-@dataclass(slots=True)
+@dataclass
 class LLMReply:
     content: str
     used_live_model: bool
+    fallback_reason: Optional[str] = None
 
 
 class LLMService:
-    """Handles model invocation while keeping provider-specific details isolated."""
+    """负责整理上下文并调用大语言模型服务。"""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -32,46 +34,68 @@ class LLMService:
         self,
         user_message: str,
         history: list[MemoryMessage],
-        session_summary: str | None = None,
-        search_results: list[SearchResult] | None = None,
+        session_summary: Optional[str] = None,
+        search_results: Optional[list[SearchResult]] = None,
     ) -> LLMReply:
+        normalized_search_results = search_results or []
         messages = self._build_messages(
             user_message=user_message,
             history=history,
             session_summary=session_summary,
-            search_results=search_results or [],
+            search_results=normalized_search_results,
         )
 
         if not self._settings.llm_api_key:
-            return LLMReply(
-                content=self._build_mock_reply(
-                    user_message=user_message,
-                    history=history,
-                    session_summary=session_summary,
-                    search_results=search_results or [],
-                ),
-                used_live_model=False,
+            return self._build_fallback_reply(
+                user_message=user_message,
+                history=history,
+                session_summary=session_summary,
+                search_results=normalized_search_results,
+                reason="missing_api_key",
             )
 
         if self._settings.llm_provider != "dashscope":
-            raise ValueError(
-                f"Unsupported LLM provider: {self._settings.llm_provider}"
+            if not self._settings.llm_fallback_enabled:
+                raise ValueError(
+                    f"Unsupported LLM provider: {self._settings.llm_provider}"
+                )
+            return self._build_fallback_reply(
+                user_message=user_message,
+                history=history,
+                session_summary=session_summary,
+                search_results=normalized_search_results,
+                reason=f"unsupported_provider:{self._settings.llm_provider}",
             )
 
         try:
             content = self._call_dashscope(messages)
-        except (RuntimeError, ValueError):
-            raise
+            return LLMReply(content=content, used_live_model=True)
+        except (RuntimeError, ValueError) as exc:
+            if not self._settings.llm_fallback_enabled:
+                raise
+            return self._build_fallback_reply(
+                user_message=user_message,
+                history=history,
+                session_summary=session_summary,
+                search_results=normalized_search_results,
+                reason=f"provider_request_failed:{exc}",
+            )
         except Exception as exc:
-            raise RuntimeError(f"Failed to call LLM provider: {exc}") from exc
-
-        return LLMReply(content=content, used_live_model=True)
+            if not self._settings.llm_fallback_enabled:
+                raise RuntimeError(f"Failed to call LLM provider: {exc}") from exc
+            return self._build_fallback_reply(
+                user_message=user_message,
+                history=history,
+                session_summary=session_summary,
+                search_results=normalized_search_results,
+                reason=f"unexpected_error:{exc}",
+            )
 
     def _build_messages(
         self,
         user_message: str,
         history: list[MemoryMessage],
-        session_summary: str | None,
+        session_summary: Optional[str],
         search_results: list[SearchResult],
     ) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -107,29 +131,38 @@ class LLMService:
                 lines.append(f"   摘要：{result.snippet}")
         return "\n".join(lines)
 
-    def _build_mock_reply(
+    def _build_fallback_reply(
         self,
         user_message: str,
         history: list[MemoryMessage],
-        session_summary: str | None,
+        session_summary: Optional[str],
         search_results: list[SearchResult],
-    ) -> str:
+        reason: str,
+    ) -> LLMReply:
         parts = [
-            "后端骨架已就绪，但当前未检测到可用的百炼 API Key，因此先返回本地占位回复。",
-            f"当前消息：{user_message}",
+            "当前未能稳定调用在线模型，因此返回本地降级回复，方便继续联调整体链路。",
+            f"用户消息：{user_message}",
         ]
 
         if history:
-            parts.append(f"已读取最近 {len(history)} 条上下文消息。")
+            parts.append(f"已读取最近上下文条数：{len(history)}")
 
         if session_summary:
             parts.append(f"当前会话摘要：{session_summary}")
 
         if search_results:
-            parts.append(f"本轮可用搜索结果数量：{len(search_results)}")
+            parts.append(f"当前搜索结果数量：{len(search_results)}")
+            formatted_sources = "；".join(
+                f"{result.title} ({result.url})" for result in search_results[:3]
+            )
+            parts.append(f"可参考来源：{formatted_sources}")
 
-        parts.append("补齐真实模型配置后，这里会返回百炼模型生成的正式回答。")
-        return "\n\n".join(parts)
+        parts.append("后续修正模型配置或网络环境后，这里会恢复为正式模型生成内容。")
+        return LLMReply(
+            content="\n\n".join(parts),
+            used_live_model=False,
+            fallback_reason=reason,
+        )
 
     def _call_dashscope(self, messages: list[dict[str, str]]) -> str:
         payload = {
@@ -149,7 +182,10 @@ class LLMService:
         )
 
         try:
-            with request.urlopen(http_request, timeout=30) as response:
+            with request.urlopen(
+                http_request,
+                timeout=self._settings.llm_timeout_seconds,
+            ) as response:
                 response_data = json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="ignore")
