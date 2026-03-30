@@ -2,7 +2,6 @@
   getAccessModeHelpText,
   getAccessModeLabel,
   getPrivacyHelpText,
-  getPrivacyLabel,
   getSessionTitle,
   getStatusLabel,
 } from "./labels.js";
@@ -135,14 +134,14 @@ function renderProjectsSection(state, elements) {
         <span>项目</span>
         <span class="sidebar-toggle-icon">${collapsed ? "＋" : "－"}</span>
       </button>
-      <button id="openProjectModalButton" class="icon-button" type="button" title="新建项目">＋</button>
+      <button id="openProjectModalButton" class="icon-button" type="button" title="新项目">＋</button>
     </div>
     ${
       collapsed
         ? ""
         : `
           <div class="sidebar-section-body">
-            <div class="sidebar-note">项目访问模式决定跨项目边界。项目删除后，会级联删除项目内所有会话、消息和摘要。</div>
+            <div class="sidebar-note">项目访问模式决定跨项目边界。删除项目会级联删除项目内全部会话、消息和摘要。</div>
             <div class="nav-list">
               ${
                 projects.length
@@ -180,7 +179,7 @@ function renderUnassignedSection(state, elements) {
         ? ""
         : `
           <div class="sidebar-section-body">
-            <div class="sidebar-note">这里只展示没有挂到任何项目的会话。</div>
+            <div class="sidebar-note">这里只展示 project_id 为空的会话。</div>
             <div class="unassigned-list">
               ${
                 visibleSessions.length
@@ -230,7 +229,7 @@ function renderCurrentSessionPanel(state, elements) {
       <div class="detail-meta stacked">
         <span>会话 ID：${escapeHtml(session.id)}</span>
         <span>所属项目：${escapeHtml(project ? project.name : "无项目会话")}</span>
-        <span>访问模式：${escapeHtml(project ? getAccessModeHelpText(project.access_mode) : "当前会话不属于任何项目，按开放可访问历史处理。")}</span>
+        <span>访问边界：${escapeHtml(project ? getAccessModeHelpText(project.access_mode) : "当前会话不属于任何项目，按开放可访问历史处理。")}</span>
       </div>
       <label class="field-label" for="moveProjectSelect">移动到项目</label>
       <div class="inline-row">
@@ -247,7 +246,7 @@ function renderCurrentSessionPanel(state, elements) {
   if (session.status === "archived") {
     elements.sessionBanner.className = "notice warning";
     elements.sessionBanner.textContent =
-      "当前会话已归档。你仍可以查看信息，但聊天输入区会保持禁用。";
+      "当前会话已归档。你仍然可以查看消息历史和摘要，但聊天输入区会保持禁用。";
     return;
   }
 

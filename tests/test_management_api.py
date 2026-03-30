@@ -68,6 +68,46 @@ def test_archive_session_hides_it_from_default_list(client: TestClient) -> None:
     assert session_id in {item["id"] for item in archived_list_response.json()}
 
 
+def test_get_session_messages_returns_messages_in_order(client: TestClient) -> None:
+    create_response = client.post("/api/sessions", json={"title": "History"})
+    session_id = create_response.json()["id"]
+
+    assert client.post(
+        "/api/chat",
+        json={"session_id": session_id, "message": "first question"},
+    ).status_code == 200
+    assert client.post(
+        "/api/chat",
+        json={"session_id": session_id, "message": "second question"},
+    ).status_code == 200
+
+    response = client.get(f"/api/sessions/{session_id}/messages")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["role"] for item in payload] == ["user", "assistant", "user", "assistant"]
+    assert payload[0]["content"] == "first question"
+    assert payload[2]["content"] == "second question"
+
+
+def test_patch_session_updates_title(client: TestClient) -> None:
+    create_response = client.post("/api/sessions", json={"title": "Old title"})
+    session_id = create_response.json()["id"]
+
+    response = client.patch(
+        f"/api/sessions/{session_id}",
+        json={"title": "Renamed session"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == "Renamed session"
+
+    get_response = client.get(f"/api/sessions/{session_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["title"] == "Renamed session"
+
+
 def test_delete_session_hard_deletes_session_messages_and_summary(
     client: TestClient,
     session_local,
@@ -88,6 +128,9 @@ def test_delete_session_hard_deletes_session_messages_and_summary(
 
     get_response = client.get(f"/api/sessions/{session_id}")
     assert get_response.status_code == 404
+
+    messages_response = client.get(f"/api/sessions/{session_id}/messages")
+    assert messages_response.status_code == 404
 
     with session_local() as db:
         assert db.get(ChatSession, session_id) is None

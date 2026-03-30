@@ -1,11 +1,10 @@
 ﻿# API
 
-当前 API 分为两部分：
+当前 API 分为三部分：
 
+- 基础接口
 - 聊天接口
 - 项目 / 会话管理接口
-
-本阶段的重点是：聊天接口已经接入新的项目层 + 会话层访问规则。
 
 ## 基础接口
 
@@ -40,8 +39,9 @@
 说明：
 
 - `session_id` 不传时会自动创建新会话 ID
-- 当前会话自己的最近消息和摘要始终优先进入上下文
-- 其他会话当前只以摘要形式参与上下文
+- 当前会话自己的 recent messages 和 summary 始终优先进入上下文
+- 其他会话当前只以 summary 参与上下文，不读取完整原始消息
+- `archived` 会话不能继续聊天
 - allowlist 仍未实现
 
 响应示例：
@@ -50,6 +50,7 @@
 {
   "session_id": "8d4e5c7c5e954a5fa9f6d8f7567dc001",
   "reply": "demo reply",
+  "title": "hello demo",
   "summary": null,
   "used_live_model": false,
   "fallback_reason": "missing_api_key",
@@ -68,32 +69,17 @@
 - `related_summary_count`
   本次注入到上下文中的其他会话摘要数量
 
-### 聊天上下文规则
+### 自动命名行为
 
-#### 当前会话自己的读取权
+当会话 `title` 为空时，第一次成功聊天后会自动补标题。
 
-- 当前会话始终保留自己的 recent messages 和 summary
-- `is_private=true` 不会让当前会话自动退化成只读自己
+当前策略：
 
-#### 其他候选会话的可读条件
-
-以下会话不会进入外部上下文：
-
-- `is_private=true`
-- `status=archived`
-- 没有 summary 的会话
-
-#### 项目层边界
-
-- `access_mode=open`
-  当前会话可以读取外部可访问历史，项目内 shared 会话也能被项目外读取
-- `access_mode=project_only`
-  当前会话只能读取本项目历史，项目内会话对项目外不可见
-
-#### 无项目会话
-
-- 无项目且 shared 的会话，属于开放可访问历史的一部分
-- 无项目且 private 的会话，不可被其他会话读取
+- 优先取第一条 user message
+- 自动压缩换行和空白
+- 优先取第一句
+- 长度过长时做稳定截断
+- 如果会话已有标题，不会被覆盖
 
 ## 项目接口
 
@@ -115,13 +101,13 @@
 
 列出项目。
 
-查询参数：
-
-- `include_archived`，默认 `true`
-
 ### GET /api/projects/{project_id}
 
 查看单个项目。
+
+### DELETE /api/projects/{project_id}
+
+硬删除项目，并级联删除项目内全部会话、消息和摘要。
 
 ## 会话管理接口
 
@@ -157,12 +143,50 @@
 
 查看单个会话。
 
+### GET /api/sessions/{session_id}/messages
+
+读取该会话完整消息历史，按时间正序返回。
+
+响应示例：
+
+```json
+[
+  {
+    "id": 1,
+    "session_id": "abc123",
+    "role": "user",
+    "content": "hello",
+    "created_at": "2026-03-30T10:00:00Z"
+  },
+  {
+    "id": 2,
+    "session_id": "abc123",
+    "role": "assistant",
+    "content": "hi",
+    "created_at": "2026-03-30T10:00:01Z"
+  }
+]
+```
+
+### PATCH /api/sessions/{session_id}
+
+更新会话信息，当前只支持修改标题。
+
+请求体：
+
+```json
+{
+  "title": "新的会话标题"
+}
+```
+
 ### POST /api/sessions/{session_id}/archive
 
 归档会话，把 `status` 改成 `archived`。
 
 ### DELETE /api/sessions/{session_id}
 
+硬删除会话，并级联删除该会话下的消息和摘要。
 
 ### POST /api/sessions/{session_id}/move
 
@@ -209,17 +233,3 @@
 - 向量库检索
 - 其他会话完整消息拼接
 - 更复杂的召回排序与打分
-
-## 当前删除接口语义
-
-- DELETE /api/sessions/{session_id}：硬删除会话，返回简单成功响应；删除后再次查询该会话应返回 404。
-- DELETE /api/projects/{project_id}：硬删除项目，并级联删除项目内全部会话、消息和摘要。
-- GET /api/sessions 当前只支持通过 include_archived 控制是否显示归档会话，不再暴露 include_deleted。
-- 项目当前只支持创建、列表、查看、删除，不提供归档接口。
-
-## 当前删除接口语义
-
-- `DELETE /api/sessions/{session_id}`：硬删除会话，返回简单成功响应；删除后再次查询该会话应返回 404。
-- `DELETE /api/projects/{project_id}`：硬删除项目，并级联删除项目内全部会话、消息和摘要。
-- `GET /api/sessions` 当前只支持通过 `include_archived` 控制是否显示归档会话，不再暴露 `include_deleted`。
-- 项目当前只支持创建、列表、查看、删除，不提供归档接口。

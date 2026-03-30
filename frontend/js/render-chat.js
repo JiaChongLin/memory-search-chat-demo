@@ -91,7 +91,10 @@ function renderHeader(state, elements) {
     elements.currentStatusBadge.className = "badge neutral";
     elements.currentStatusBadge.textContent = "未选择";
     elements.selectionHint.textContent =
-      "请从左侧导航中创建或选择一个会话，然后在这里继续聊天。";
+      "请先从左侧导航中创建或选择一个会话，然后在这里继续聊天。";
+    if (elements.renameSessionButton) {
+      elements.renameSessionButton.disabled = true;
+    }
     return;
   }
 
@@ -106,10 +109,13 @@ function renderHeader(state, elements) {
     session.status === "active" ? "success" : "warning"
   }`;
   elements.currentStatusBadge.textContent = getStatusLabel(session.status);
+  if (elements.renameSessionButton) {
+    elements.renameSessionButton.disabled = false;
+  }
 
   if (session.status === "archived") {
     elements.selectionHint.textContent =
-      "当前会话已归档。你仍可以查看历史和调试信息，但聊天输入区会保持禁用。";
+      "当前会话已归档。你仍然可以查看历史和调试信息，但聊天输入区会保持禁用。";
     return;
   }
 
@@ -160,10 +166,9 @@ function renderDebugPanel(state, elements) {
     notes.push(`当前会话：${getPrivacyHelpText(session.is_private)}`);
   }
 
-  elements.debugInfo.dataset.notes = notes.join(" ");
   elements.debugNote.textContent = notes.length
     ? notes.join(" ")
-    : "这里会继续显示 context_scope，但按当前 access_mode 语义解释，而不是旧四档 scope。";
+    : "这里会继续显示 context_scope，但现在按 access_mode 语义解释，而不是旧的四档 scope。";
 }
 
 function renderSummary(state, elements) {
@@ -176,7 +181,7 @@ function renderSummary(state, elements) {
   }
 
   elements.summaryText.textContent = state.currentSessionId
-    ? "当前选中会话还没有本地缓存 summary。只有本页内完成的聊天请求会更新这里的摘要展示。"
+    ? "当前选中会话暂时还没有可显示的 summary。发送聊天后，或当本地缓存里已有摘要时，这里会显示会话摘要。"
     : "当前没有选中会话。请先在左侧导航中创建或选择会话。";
   elements.summaryBadge.className = "badge neutral";
   elements.summaryBadge.textContent = "无摘要";
@@ -270,8 +275,8 @@ function renderMessages(state, elements) {
     elements.chatEmptyState.innerHTML = state.currentSessionId
       ? `
         <div>
-          <strong>这个会话还没有本地渲染消息</strong>
-          <span>当前前端只展示本页面会话期间缓存过的消息。发送一条新消息后，这里会变成聊天主区。</span>
+          <strong>这个会话还没有消息历史</strong>
+          <span>会话切换时会自动从后端回读完整消息历史。你也可以直接发送一条新消息，从这里继续当前会话。</span>
         </div>
       `
       : `

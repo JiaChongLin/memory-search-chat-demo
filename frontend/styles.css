@@ -1054,3 +1054,16 @@ h3 {
     gap: 12px;
   }
 }
+
+.conversation-title-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.title-edit-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 12px;
+}

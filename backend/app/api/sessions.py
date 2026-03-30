@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 from backend.app.db.session import get_db
 from backend.app.schemas.chat import ErrorResponse
 from backend.app.schemas.sessions import (
+    MessageResponse,
     SessionCreateRequest,
     SessionDeleteResponse,
     SessionProjectMoveRequest,
     SessionResponse,
+    SessionUpdateRequest,
 )
 from backend.app.services.session_service import SessionService
 
@@ -62,6 +64,35 @@ def get_session(
     db: Session = Depends(get_db),
 ) -> SessionResponse:
     chat_session = SessionService(db).get_session(session_id)
+    return SessionResponse.model_validate(chat_session)
+
+
+@router.get(
+    "/{session_id}/messages",
+    response_model=list[MessageResponse],
+    summary="Get full session message history",
+    responses={404: {"model": ErrorResponse}},
+)
+def get_session_messages(
+    session_id: str,
+    db: Session = Depends(get_db),
+) -> list[MessageResponse]:
+    messages = SessionService(db).get_session_messages(session_id)
+    return [MessageResponse.model_validate(message) for message in messages]
+
+
+@router.patch(
+    "/{session_id}",
+    response_model=SessionResponse,
+    summary="Update a session",
+    responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+def update_session(
+    session_id: str,
+    payload: SessionUpdateRequest,
+    db: Session = Depends(get_db),
+) -> SessionResponse:
+    chat_session = SessionService(db).update_session(session_id, payload)
     return SessionResponse.model_validate(chat_session)
 
 

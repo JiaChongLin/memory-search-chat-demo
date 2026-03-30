@@ -1,14 +1,21 @@
 ﻿from __future__ import annotations
 
+import re
 from uuid import uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.db.models import ChatSession, Project, utcnow
+from backend.app.db.models import ChatMessage, ChatSession, Project, utcnow
 from backend.app.domain.constants import RECORD_STATUSES, STATUS_ACTIVE, STATUS_ARCHIVED
-from backend.app.schemas.sessions import SessionCreateRequest, SessionProjectMoveRequest
+from backend.app.schemas.sessions import (
+    SessionCreateRequest,
+    SessionProjectMoveRequest,
+    SessionUpdateRequest,
+)
+
+_TITLE_MAX_LENGTH = 36
 
 
 class SessionService:
@@ -23,7 +30,7 @@ class SessionService:
 
         chat_session = ChatSession(
             id=uuid4().hex,
-            title=payload.title,
+            title=self._normalize_title(payload.title),
             project_id=payload.project_id,
             is_private=payload.is_private,
             status=STATUS_ACTIVE,
@@ -53,6 +60,27 @@ class SessionService:
 
     def get_session(self, session_id: str) -> ChatSession:
         return self._get_session_or_404(session_id)
+
+    def get_session_messages(self, session_id: str) -> list[ChatMessage]:
+        self._get_session_or_404(session_id)
+        stmt = (
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+        )
+        return list(self._db.scalars(stmt))
+
+    def update_session(
+        self,
+        session_id: str,
+        payload: SessionUpdateRequest,
+    ) -> ChatSession:
+        chat_session = self._get_session_or_404(session_id)
+        chat_session.title = self._normalize_title(payload.title)
+        chat_session.updated_at = utcnow()
+        self._db.commit()
+        self._db.refresh(chat_session)
+        return chat_session
 
     def archive_session(self, session_id: str) -> ChatSession:
         chat_session = self._get_session_or_404(session_id)
@@ -85,6 +113,59 @@ class SessionService:
         self._db.commit()
         self._db.refresh(chat_session)
         return chat_session
+
+    def maybe_generate_title(
+        self,
+        session_id: str,
+        fallback_user_message: str | None = None,
+    ) -> ChatSession:
+        chat_session = self._get_session_or_404(session_id)
+        if self._normalize_title(chat_session.title):
+            return chat_session
+
+        stmt = (
+            select(ChatMessage.content)
+            .where(
+                ChatMessage.session_id == session_id,
+                ChatMessage.role == "user",
+            )
+            .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+        )
+        first_user_message = self._db.execute(stmt).scalars().first()
+        generated_title = self.generate_default_title(
+            first_user_message or fallback_user_message,
+        )
+        if not generated_title:
+            return chat_session
+
+        chat_session.title = generated_title
+        chat_session.updated_at = utcnow()
+        self._db.commit()
+        self._db.refresh(chat_session)
+        return chat_session
+
+    def generate_default_title(self, source_text: str | None) -> str | None:
+        normalized = self._normalize_title(source_text)
+        if not normalized:
+            return None
+
+        first_segment = re.split(r"[。！？!?;；\n]+", normalized, maxsplit=1)[0].strip()
+        candidate = first_segment or normalized
+        candidate = re.sub(r"^[\-–—:：,，.。!?！？\s]+", "", candidate).strip()
+        if not candidate:
+            return None
+
+        if len(candidate) <= _TITLE_MAX_LENGTH:
+            return candidate
+
+        shortened = candidate[: _TITLE_MAX_LENGTH - 1].rstrip(" ,，、.。!?！？")
+        return f"{shortened}…"
+
+    def _normalize_title(self, title: str | None) -> str | None:
+        if title is None:
+            return None
+        normalized = " ".join(title.split()).strip()
+        return normalized or None
 
     def _get_project_or_404(self, project_id: int) -> Project:
         project = self._db.get(Project, project_id)

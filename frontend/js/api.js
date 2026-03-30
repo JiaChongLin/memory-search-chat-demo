@@ -80,9 +80,20 @@ export function getSession(baseUrl, sessionId) {
   return requestJson(baseUrl, `/api/sessions/${sessionId}`, { method: "GET" });
 }
 
+export function getSessionMessages(baseUrl, sessionId) {
+  return requestJson(baseUrl, `/api/sessions/${sessionId}/messages`, { method: "GET" });
+}
+
 export function createSession(baseUrl, payload) {
   return requestJson(baseUrl, "/api/sessions", {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateSession(baseUrl, sessionId, payload) {
+  return requestJson(baseUrl, `/api/sessions/${sessionId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }

@@ -1,4 +1,4 @@
-﻿import { getAccessModeLabel } from "./labels.js";
+﻿import { getAccessModeLabel, getSessionTitle } from "./labels.js";
 import {
   archiveSession,
   createProject,
@@ -6,25 +6,31 @@ import {
   deleteProject,
   deleteSession,
   getSession,
+  getSessionMessages,
   healthCheck,
   listProjects,
   listSessions,
   moveSession,
   normalizeBaseUrl,
   sendChat,
+  updateSession,
 } from "./api.js";
 import { renderChat } from "./render-chat.js";
 import { renderManagement } from "./render-management.js";
 import {
   appendMessage,
+  clearCurrentSessionSelection,
   clearNotice,
+  getMessagesForSession,
   getState,
+  removeSessionData,
   setBackendBaseUrl,
   setBusy,
   setChatDebug,
   setCurrentProjectId,
   setCurrentSessionId,
   setHealth,
+  setMessagesForSession,
   setNewChatMenuOpen,
   setNotice,
   setProjectModalOpen,
@@ -61,6 +67,7 @@ const elements = {
   currentSessionLabel: document.querySelector("#currentSessionLabel"),
   currentVisibilityBadge: document.querySelector("#currentVisibilityBadge"),
   currentStatusBadge: document.querySelector("#currentStatusBadge"),
+  renameSessionButton: document.querySelector("#renameSessionButton"),
   healthBadge: document.querySelector("#healthBadge"),
   environmentValue: document.querySelector("#environmentValue"),
   projectModal: document.querySelector("#projectModal"),
@@ -116,6 +123,15 @@ function buildAssistantDebug(responseData) {
   };
 }
 
+function mapApiMessage(message) {
+  return {
+    role: message.role,
+    content: message.content,
+    timestamp: message.created_at,
+    sources: [],
+  };
+}
+
 function canChatWithCurrentSelection() {
   const state = getState();
   const session = state.selectedSessionDetail;
@@ -139,8 +155,37 @@ function syncProjectSelection(projectId) {
 }
 
 function clearSessionSelection() {
-  setCurrentSessionId(null);
-  setSelectedSessionDetail(null);
+  clearCurrentSessionSelection();
+}
+
+async function ensureSessionMessages(sessionId, options = {}) {
+  if (!sessionId) {
+    return;
+  }
+
+  const force = Boolean(options.force);
+  const existingMessages = getMessagesForSession(sessionId);
+  if (!force && existingMessages.length > 0) {
+    return;
+  }
+
+  try {
+    const payload = await getSessionMessages(getBaseUrl(), sessionId);
+    setMessagesForSession(
+      sessionId,
+      payload.map((message) => mapApiMessage(message)),
+    );
+  } catch (error) {
+    if (error.status === 404) {
+      removeSessionData(sessionId);
+      if (getState().currentSessionId === sessionId) {
+        clearSessionSelection();
+      }
+      setNotice("sessions", "该会话不存在，无法回读历史。", "warning");
+      return;
+    }
+    setNotice("sessions", `加载会话历史失败：${formatErrorMessage(error)}`, "warning");
+  }
 }
 
 async function refreshHealth(silent = false) {
@@ -213,6 +258,7 @@ async function syncSelectedSessionDetail() {
     setSelectedSessionDetail(detail);
   } catch (error) {
     if (error.status === 404) {
+      removeSessionData(state.currentSessionId);
       clearSessionSelection();
       return;
     }
@@ -226,6 +272,11 @@ async function refreshSessions(options = {}) {
     const sessions = await listSessions(getBaseUrl());
     setSessions(sessions);
     await syncSelectedSessionDetail();
+
+    const state = getState();
+    if (state.currentSessionId && options.loadMessages !== false) {
+      await ensureSessionMessages(state.currentSessionId, { force: Boolean(options.forceMessages) });
+    }
 
     if (!options.silent) {
       clearNotice("sessions");
@@ -300,6 +351,7 @@ async function handleProjectDelete(projectId) {
       setNewChatMenuOpen(false);
     }
     if (deletingCurrentSession) {
+      removeSessionData(selectedSession.id);
       clearSessionSelection();
     }
     setNotice("projects", response.message || "项目已删除。", "warning");
@@ -321,6 +373,7 @@ async function createBlankSession(projectId = null) {
     setCurrentSessionId(session.id);
     setSelectedSessionDetail(session);
     setSummaryForSession(session.id, null);
+    setMessagesForSession(session.id, []);
     syncProjectSelection(session.project_id);
     setNewChatMenuOpen(false);
     setNotice(
@@ -345,7 +398,7 @@ function handleNewChatClick() {
   createBlankSession(null);
 }
 
-function handleSessionSelect(sessionId) {
+async function handleSessionSelect(sessionId) {
   const state = getState();
   const session = state.sessions.find((item) => item.id === sessionId) || null;
   setCurrentSessionId(sessionId);
@@ -355,6 +408,32 @@ function handleSessionSelect(sessionId) {
   if (session) {
     syncProjectSelection(session.project_id);
   }
+  await ensureSessionMessages(sessionId, { force: false });
+}
+
+async function handleRenameSession() {
+  const state = getState();
+  const session = state.selectedSessionDetail;
+  if (!session) {
+    setNotice("sessions", "当前没有选中会话。", "warning");
+    return;
+  }
+
+  const nextTitle = window.prompt("输入新的会话标题", session.title || "");
+  if (nextTitle === null) {
+    return;
+  }
+
+  try {
+    const updated = await updateSession(getBaseUrl(), session.id, {
+      title: nextTitle,
+    });
+    setSelectedSessionDetail(updated);
+    setNotice("sessions", `会话已改名为“${getSessionTitle(updated.title)}”。`, "success");
+    await refreshSessions({ silent: true, loadMessages: false });
+  } catch (error) {
+    setNotice("sessions", `改名失败：${formatErrorMessage(error)}`, "danger");
+  }
 }
 
 async function handleArchiveSession(sessionId) {
@@ -362,7 +441,7 @@ async function handleArchiveSession(sessionId) {
     const session = await archiveSession(getBaseUrl(), sessionId);
     setSelectedSessionDetail(session);
     setNotice("sessions", `会话 ${sessionId.slice(0, 10)} 已归档。`, "success");
-    await refreshSessions({ silent: true });
+    await refreshSessions({ silent: true, loadMessages: false });
   } catch (error) {
     setNotice("sessions", `归档失败：${formatErrorMessage(error)}`, "danger");
   }
@@ -373,12 +452,13 @@ async function handleDeleteSession(sessionId) {
 
   try {
     const response = await deleteSession(getBaseUrl(), sessionId);
+    removeSessionData(sessionId);
     if (deletingCurrentSession) {
       clearSessionSelection();
     }
     setNotice("sessions", response.message || "会话已删除。", "warning");
     clearNotice("chat");
-    await refreshSessions({ silent: true });
+    await refreshSessions({ silent: true, loadMessages: false });
   } catch (error) {
     setNotice("sessions", `删除失败：${formatErrorMessage(error)}`, "danger");
   }
@@ -409,7 +489,7 @@ async function handleMoveSession() {
       targetProjectId === null ? "会话已移出项目。" : "会话已移动到目标项目。",
       "success",
     );
-    await refreshSessions({ silent: true });
+    await refreshSessions({ silent: true, loadMessages: false });
   } catch (error) {
     setNotice("sessions", `移动失败：${formatErrorMessage(error)}`, "danger");
   }
@@ -450,15 +530,18 @@ async function handleChatSubmit(event) {
       session_id: stateBeforeSend.currentSessionId,
     });
 
-    setCurrentSessionId(response.session_id);
-    setSelectedSessionDetail({
+    const nextSessionDetail = {
       id: response.session_id,
-      title: stateBeforeSend.selectedSessionDetail?.title || null,
-      project_id: stateBeforeSend.selectedSessionDetail?.project_id || null,
+      title: response.title ?? stateBeforeSend.selectedSessionDetail?.title ?? null,
+      project_id: stateBeforeSend.selectedSessionDetail?.project_id ?? null,
       status: "active",
       is_private: stateBeforeSend.selectedSessionDetail?.is_private || false,
+      created_at: stateBeforeSend.selectedSessionDetail?.created_at,
       updated_at: new Date().toISOString(),
-    });
+    };
+
+    setCurrentSessionId(response.session_id);
+    setSelectedSessionDetail(nextSessionDetail);
     setSummaryForSession(response.session_id, response.summary || null);
     setChatDebug(response.session_id, buildAssistantDebug(response));
 
@@ -475,7 +558,7 @@ async function handleChatSubmit(event) {
       `消息已发送，当前上下文解析结果为 ${getAccessModeLabel(response.context_scope)}。`,
       "success",
     );
-    await refreshSessions({ silent: true });
+    await refreshSessions({ silent: true, loadMessages: false });
   } catch (error) {
     appendMessage(stateBeforeSend.currentSessionId, {
       role: "system",
@@ -567,6 +650,11 @@ function handleGlobalClick(event) {
     return;
   }
 
+  if (event.target.closest("#renameSessionButton")) {
+    handleRenameSession();
+    return;
+  }
+
   const archiveButton = event.target.closest("#archiveSessionButton");
   if (archiveButton) {
     const state = getState();
@@ -645,7 +733,7 @@ async function bootstrap() {
   wireEvents();
   await refreshHealth(true);
   await refreshProjects({ silent: true });
-  await refreshSessions({ silent: true });
+  await refreshSessions({ silent: true, forceMessages: true });
 }
 
 bootstrap();
