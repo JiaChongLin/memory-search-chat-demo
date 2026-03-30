@@ -76,9 +76,12 @@ class SessionService:
         payload: SessionProjectMoveRequest,
     ) -> ChatSession:
         chat_session = self._get_session_or_404(session_id)
-        project = self._get_project_or_404(payload.project_id)
+        if payload.project_id is not None:
+            project = self._get_project_or_404(payload.project_id)
+            chat_session.project_id = project.id
+        else:
+            chat_session.project_id = None
 
-        chat_session.project_id = project.id
         chat_session.updated_at = utcnow()
         self._db.commit()
         self._db.refresh(chat_session)

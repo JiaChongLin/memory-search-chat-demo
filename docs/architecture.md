@@ -50,18 +50,9 @@ API 层继续保持轻量，主要负责：
 - 调用对应 service
 - 返回 schema response
 
-当前路由分成三类：
-
-- `chat.py`
-  聊天入口
-- `projects.py`
-  项目管理接口
-- `sessions.py`
-  会话管理接口
-
 ### ChatService
 
-`ChatService` 仍然保持轻量编排，只负责：
+`ChatService` 保持轻量编排，只负责：
 
 - 确定 `session_id`
 - 调用 `ContextResolver` 获取可访问上下文
@@ -70,11 +61,9 @@ API 层继续保持轻量，主要负责：
 - 调用 `MemoryService.append_turn()` 写回消息和摘要
 - 返回轻量调试信息
 
-权限判断和上下文拼装不再堆在 `ChatService` 内部。
-
 ### MemoryService
 
-`MemoryService` 现在只负责会话记忆读写：
+`MemoryService` 只负责会话记忆读写：
 
 - 当前会话最近消息读取
 - 当前会话摘要读取
@@ -83,15 +72,13 @@ API 层继续保持轻量，主要负责：
 
 ### ContextResolver
 
-`ContextResolver` 负责聊天上下文解析：
+`ContextResolver` 负责聊天上下文解析，核心规则是：
 
-- 按项目 `scope_mode` 计算默认边界
-- 按会话 `is_private` 进一步收紧
-- 按项目 `is_isolated` 阻止跨边界读取
-- 过滤 deleted / archived / private 的外部候选会话
-- 把其他会话以摘要形式组装进上下文
-
-这层拆出来后，后续继续加 allowlist、调试接口和召回排序会更自然。
+- 项目层决定跨项目边界
+- 会话层决定该会话是否能被别人读取
+- private 会话自己仍然可以读取其他允许访问的历史
+- 当前会话始终优先读取自己的 recent messages 和 summary
+- 其他会话当前只读取 summary
 
 ### ProjectService / SessionService
 
@@ -100,9 +87,7 @@ API 层继续保持轻量，主要负责：
 - `ProjectService`
   创建 / 列表 / 单查项目
 - `SessionService`
-  创建 / 列表 / 单查 / 归档 / 软删除 / 移动会话
-
-router 里不再直接堆 DB 查询和状态变更逻辑。
+  创建 / 列表 / 单查 / 归档 / 软删除 / 移动会话 / 移出项目
 
 ## 数据模型关系
 
@@ -116,10 +101,8 @@ Project 1 --- N ChatSession 1 --- N ChatMessage
 
 关键字段：
 
-- `scope_mode`
-  决定项目内会话默认的上下文边界
-- `is_isolated`
-  决定该项目是否允许被项目外会话跨边界读取
+- `access_mode`
+  控制项目内会话是否允许访问项目外历史，以及该项目内容是否能被项目外读取
 - `status`
   项目生命周期状态
 
@@ -128,74 +111,41 @@ Project 1 --- N ChatSession 1 --- N ChatMessage
 关键字段：
 
 - `project_id`
-  会话归属项目
+  会话可不属于任何项目，也可以被移入或移出项目
 - `status`
   会话生命周期状态
 - `is_private`
-  会话层收紧规则
+  控制该会话是否可被其他会话读取，不控制它自己的读取权
 
-## 当前权限规则
+## 当前权限模型
 
-### 设计原则
+### 项目层：跨项目边界
 
-- 项目层决定默认边界
-- 会话层只能收紧，不能放宽
-- `is_private=true` 时，默认只有当前会话自己可读
-- `is_isolated=true` 时，不能跨越该项目边界读取内容
-- `scope_mode=global` 代表“读取所有允许访问的历史”，不是“无条件读取所有历史”
+#### open
 
-### 实际解析规则
-
-#### conversation_only
-
-只读取：
-
-- 当前会话最近消息
-- 当前会话摘要
+- 当前会话可以访问外部可访问历史
+- 项目内非 private 会话也可以被项目外访问
 
 #### project_only
 
-读取：
+- 当前会话只能访问本项目内历史
+- 项目内会话内容对项目外不可见
 
-- 当前会话最近消息
-- 当前会话摘要
-- 同项目下其他非 private、非 deleted、当前实现中也要求 `status=active` 的会话摘要
+### 会话层：可见性
 
-不读取：
+#### shared
 
-- 项目外摘要
-- 其他会话原始消息
+当前实现中由 `is_private=false` 表示：
 
-#### project_plus_global
+- 该会话可以被其他允许访问的会话读取
+- 该会话自己也可以读取其他允许访问的历史
 
-读取：
+#### private
 
-- 当前会话最近消息
-- 当前会话摘要
-- 同项目可访问会话摘要
-- 项目外可访问的全局摘要
+当前实现中由 `is_private=true` 表示：
 
-限制：
-
-- 不读取 private
-- 不读取 deleted
-- 当前实现中不读取 archived
-- 不能跨过 isolated 项目边界
-
-#### global
-
-读取：
-
-- 当前会话最近消息
-- 当前会话摘要
-- 所有允许访问的其他会话摘要
-
-限制同样成立：
-
-- private 不可读
-- deleted 不可读
-- archived 当前不纳入检索
-- isolated 项目边界不可穿透
+- 该会话不能被任何其他会话读取
+- 但该会话自己仍然可以读取其他允许访问的历史
 
 ## 当前会进入模型上下文的数据
 
@@ -208,13 +158,46 @@ Project 1 --- N ChatSession 1 --- N ChatMessage
 
 - 其他会话完整消息历史
 - private 会话摘要
-- deleted 会话摘要
 - archived 会话摘要
-- 被 isolated 边界挡住的跨项目摘要
+- deleted 会话摘要
 
-## 当前实现的取舍
+## 未来扩展：Tool Layer（预留）
 
-- 为了保持 demo 简洁，跨会话只拼摘要，不做向量检索
-- archived 会话暂不纳入上下文，避免语义复杂化
-- allowlist 尚未实现，只保留未来扩展空间
-- 外部候选摘要目前保持轻量排序，优先同项目，再补全全局可访问摘要
+当前仓库里还没有正式的 tool calling 层。
+
+这里需要明确：当前的 service 不等于 tool。
+
+- service 是当前应用后端的业务实现层，直接服务于 API Router 和聊天主流程
+- future tool 是面向模型可调用能力的薄包装层，目标是复用现有 service，而不是替代它们
+
+未来如果进入 agent 化阶段，`Tool Layer` 预期会作为 service 之上的一层轻包装，负责把现有能力整理成更适合模型调用的输入输出形式。
+
+设计原则：
+
+1. tool 不重复实现业务逻辑
+2. tool 优先调用 service，不直接操作数据库
+3. 当前聊天主流程不依赖 tool 层
+4. tool 层属于未来扩展，不是当前 MVP 范围
+
+未来可能出现的 tool 示例：
+
+- `search_web`
+- `get_project_detail`
+- `list_project_sessions`
+- `get_session_summary`
+- `move_session_to_project`
+- `archive_session`
+
+如果后续真的进入这一阶段，目录形态可能类似：
+
+```text
+backend/app/tools/
+  base.py
+  registry.py
+  search_tool.py
+  project_tool.py
+  session_tool.py
+  memory_tool.py
+```
+
+上面只是预留示意，不代表当前仓库已经有这些文件，也不代表当前实现已经切到 tool-first 架构。

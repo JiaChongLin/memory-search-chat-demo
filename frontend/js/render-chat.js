@@ -1,4 +1,21 @@
 ﻿import {
+  getAccessModeHelpText,
+  getAccessModeLabel,
+  getCurrentProjectAccessLabel,
+  getDebugFieldLabel,
+  getBoolLabel,
+  getFallbackReasonLabel,
+  getModelUsageLabel,
+  getProjectIdLabel,
+  getPrivacyHelpText,
+  getPrivacyLabel,
+  getRoleLabel,
+  getSearchUsageLabel,
+  getSessionTitle,
+  getStatusLabel,
+  getSummaryCachedLabel,
+} from "./labels.js";
+import {
   getDebugForSession,
   getMessagesForCurrentSession,
   getSummaryForSession,
@@ -28,54 +45,82 @@ function buildDebugItems(message) {
 
   const debug = message.debug;
   const items = [
-    { label: debug.context_scope || "conversation_only", variant: "scope" },
-    { label: `related: ${debug.related_summary_count ?? 0}`, variant: "soft" },
+    { label: `解析结果：${getAccessModeLabel(debug.context_scope || "open")}`, variant: "scope" },
+    { label: `相关摘要 ${debug.related_summary_count ?? 0} 条`, variant: "soft" },
     {
-      label: debug.used_live_model ? "live model" : "fallback",
+      label: getModelUsageLabel(debug.used_live_model),
       variant: debug.used_live_model ? "success" : "warning",
     },
   ];
 
-  if (debug.search_triggered) {
+  if (debug.search_triggered || debug.search_used) {
     items.push({
-      label: debug.search_used ? "search used" : "search triggered",
+      label: getSearchUsageLabel(debug.search_triggered, debug.search_used),
       variant: "info",
     });
   }
 
   if (debug.fallback_reason) {
-    items.push({ label: `reason: ${debug.fallback_reason}`, variant: "danger" });
+    items.push({ label: `降级原因：${getFallbackReasonLabel(debug.fallback_reason)}`, variant: "danger" });
   }
 
   return items;
+}
+
+function resolveCurrentProject(state) {
+  const session = state.selectedSessionDetail;
+  if (!session?.project_id) {
+    return null;
+  }
+  return state.projects.find((item) => item.id === session.project_id) || null;
 }
 
 function renderDebugPanel(state, elements) {
   const sessionId = state.currentSessionId;
   const debug = getDebugForSession(sessionId);
   const summary = getSummaryForSession(sessionId);
+  const session = state.selectedSessionDetail;
+  const project = resolveCurrentProject(state);
 
   const rows = [
     ["session_id", sessionId || "未选中"],
-    ["context_scope", debug?.context_scope || "-"],
+    ["current_project_access", getCurrentProjectAccessLabel(project)],
+    ["current_session_visibility", session ? getPrivacyLabel(session.is_private) : "未选中"],
+    ["context_scope", getAccessModeLabel(debug?.context_scope)],
     ["related_summary_count", String(debug?.related_summary_count ?? 0)],
-    ["used_live_model", debug?.used_live_model === undefined ? "-" : String(debug.used_live_model)],
-    ["fallback_reason", debug?.fallback_reason || "-"],
-    ["search_triggered", debug?.search_triggered === undefined ? "-" : String(debug.search_triggered)],
-    ["search_used", debug?.search_used === undefined ? "-" : String(debug.search_used)],
-    ["summary_cached", summary ? "yes" : "no"],
+    ["used_live_model", getBoolLabel(debug?.used_live_model)],
+    ["fallback_reason", getFallbackReasonLabel(debug?.fallback_reason)],
+    ["search_triggered", getBoolLabel(debug?.search_triggered)],
+    ["search_used", getBoolLabel(debug?.search_used)],
+    ["summary_cached", getSummaryCachedLabel(Boolean(summary))],
   ];
 
   elements.debugInfo.innerHTML = rows
     .map(
       ([key, value]) => `
         <div class="debug-item">
-          <dt>${key}</dt>
+          <dt>${getDebugFieldLabel(key)}</dt>
           <dd>${value}</dd>
         </div>
       `,
     )
     .join("");
+
+  const notes = [];
+  if (project) {
+    notes.push(`当前项目：${getAccessModeHelpText(project.access_mode)}`);
+  } else if (session) {
+    notes.push("当前会话不属于任何项目，因此按开放可访问历史解释项目边界。");
+  }
+  if (session) {
+    notes.push(`当前会话：${getPrivacyHelpText(session.is_private)}`);
+  }
+  elements.debugInfo.dataset.notes = notes.join(" ");
+  if (elements.debugNote) {
+    elements.debugNote.textContent = notes.length
+      ? notes.join(" ")
+      : "这里会用新模型语言解释 context_scope、项目访问模式和会话可见性。";
+  }
 }
 
 function renderSummary(state, elements) {
@@ -124,12 +169,12 @@ function renderComposerState(state, elements) {
 function renderSelectionHint(state, elements) {
   const session = state.selectedSessionDetail;
   if (!session) {
-    elements.selectionHint.textContent = "请先在中间栏显式选择或创建会话。当前未选中 session 时，右侧聊天区不会直接发送消息。";
+    elements.selectionHint.textContent = "请先在中间栏显式选择或创建会话。当前未选中会话时，右侧聊天区不会直接发送消息。";
     return;
   }
 
-  const projectLabel = session.project_id ? `项目 #${session.project_id}` : "无项目";
-  elements.selectionHint.textContent = `当前会话：${session.title || "Untitled Session"}，归属：${projectLabel}，状态：${session.status}。`;
+  const projectLabel = getProjectIdLabel(session.project_id);
+  elements.selectionHint.textContent = `当前会话：${getSessionTitle(session.title)}，归属：${projectLabel}，可见性：${getPrivacyLabel(session.is_private)}，状态：${getStatusLabel(session.status)}。`;
 }
 
 function renderNotice(state, elements) {
@@ -148,8 +193,7 @@ function buildMessageNode(message, template) {
   const node = template.content.firstElementChild.cloneNode(true);
   node.classList.add(`message-${message.role}`);
 
-  node.querySelector(".message-role").textContent =
-    message.role === "user" ? "User" : message.role === "assistant" ? "Assistant" : "System";
+  node.querySelector(".message-role").textContent = getRoleLabel(message.role);
   node.querySelector(".message-time").textContent = formatTime(message.timestamp);
   node.querySelector(".message-content").textContent = message.content;
 

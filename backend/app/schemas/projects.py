@@ -5,14 +5,17 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.app.domain.constants import ProjectScopeMode, RecordStatus, SCOPE_MODE_CONVERSATION_ONLY
+from backend.app.domain.constants import (
+    PROJECT_ACCESS_OPEN,
+    ProjectAccessMode,
+    RecordStatus,
+)
 
 
 class ProjectCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(default=None, max_length=4000)
-    scope_mode: ProjectScopeMode = SCOPE_MODE_CONVERSATION_ONLY
-    is_isolated: bool = False
+    access_mode: ProjectAccessMode = PROJECT_ACCESS_OPEN
 
 
 class ProjectResponse(BaseModel):
@@ -21,8 +24,7 @@ class ProjectResponse(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
-    scope_mode: ProjectScopeMode
-    is_isolated: bool
+    access_mode: ProjectAccessMode
     status: RecordStatus
     created_at: datetime
     updated_at: datetime

@@ -5,7 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models import Project
-from backend.app.domain.constants import STATUS_ARCHIVED, STATUS_DELETED
+from backend.app.domain.constants import (
+    PROJECT_ACCESS_OPEN,
+    STATUS_ARCHIVED,
+    STATUS_DELETED,
+)
 from backend.app.schemas.projects import ProjectCreateRequest
 
 

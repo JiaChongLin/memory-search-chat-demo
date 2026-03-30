@@ -1,4 +1,14 @@
-﻿function escapeHtml(value) {
+﻿import {
+  getAccessModeHelpText,
+  getAccessModeLabel,
+  getPrivacyHelpText,
+  getPrivacyLabel,
+  getProjectBindingLabel,
+  getSessionTitle,
+  getStatusLabel,
+} from "./labels.js";
+
+function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -45,22 +55,22 @@ function renderProjectDetail(state, elements) {
     <div class="detail-head">
       <strong>${escapeHtml(project.name)}</strong>
       <div class="tag-row">
-        ${badge(project.scope_mode, "scope")}
-        ${badge(project.is_isolated ? "isolated" : "shared", project.is_isolated ? "warning" : "soft")}
-        ${badge(project.status, project.status === "active" ? "success" : "warning")}
+        ${badge(getAccessModeLabel(project.access_mode), "scope")}
+        ${badge(getStatusLabel(project.status), project.status === "active" ? "success" : "warning")}
       </div>
     </div>
     ${description}
+    <p class="detail-copy">${escapeHtml(getAccessModeHelpText(project.access_mode))}</p>
     <div class="detail-meta">
-      <span>id: ${project.id}</span>
-      <span>created_at: ${escapeHtml(project.created_at || "-")}</span>
+      <span>项目 ID: ${project.id}</span>
+      <span>创建时间: ${escapeHtml(project.created_at || "-")}</span>
     </div>
   `;
 }
 
 function renderProjectList(state, elements) {
   if (!state.projects.length) {
-    elements.projectList.innerHTML = '<div class="empty-card">当前没有项目。先创建一个项目，再测试 scope_mode / is_isolated。</div>';
+    elements.projectList.innerHTML = '<div class="empty-card">当前没有项目。先创建一个项目，再测试开放项目和仅限项目的访问边界。</div>';
     return;
   }
 
@@ -75,9 +85,8 @@ function renderProjectList(state, elements) {
               <span class="entity-id">#${project.id}</span>
             </div>
             <div class="tag-row">
-              ${badge(project.scope_mode, "scope")}
-              ${badge(project.is_isolated ? "isolated" : "shared", project.is_isolated ? "warning" : "soft")}
-              ${badge(project.status, project.status === "active" ? "success" : "warning")}
+              ${badge(getAccessModeLabel(project.access_mode), "scope")}
+              ${badge(getStatusLabel(project.status), project.status === "active" ? "success" : "warning")}
             </div>
           </button>
         </article>
@@ -99,23 +108,24 @@ function renderSessionDetail(state, elements) {
   }
 
   const project = state.projects.find((item) => item.id === session.project_id);
-  const projectLabel = project ? `${project.name} (#${project.id})` : (session.project_id ? `项目 #${session.project_id}` : "无项目");
+  const projectLabel = project ? `${project.name} (#${project.id})` : "无项目会话";
 
   elements.sessionDetail.className = "detail-card";
   elements.sessionDetail.innerHTML = `
     <div class="detail-head">
-      <strong>${escapeHtml(session.title || "Untitled Session")}</strong>
+      <strong>${escapeHtml(getSessionTitle(session.title))}</strong>
       <div class="tag-row">
-        ${badge(session.is_private ? "private" : "public", session.is_private ? "danger" : "soft")}
-        ${badge(session.status, session.status === "active" ? "success" : session.status === "archived" ? "warning" : "danger")}
-        ${badge(session.project_id ? "project-bound" : "no-project", "soft")}
+        ${badge(getPrivacyLabel(session.is_private), session.is_private ? "danger" : "soft")}
+        ${badge(getStatusLabel(session.status), session.status === "active" ? "success" : session.status === "archived" ? "warning" : "danger")}
+        ${badge(getProjectBindingLabel(session.project_id), "soft")}
       </div>
     </div>
+    <p class="detail-copy">${escapeHtml(getPrivacyHelpText(session.is_private))}</p>
     <div class="detail-meta stacked">
-      <span>id: ${escapeHtml(session.id)}</span>
-      <span>project_id: ${session.project_id ?? "null"}</span>
-      <span>project: ${escapeHtml(projectLabel)}</span>
-      <span>updated_at: ${escapeHtml(session.updated_at || "-")}</span>
+      <span>会话 ID: ${escapeHtml(session.id)}</span>
+      <span>项目归属: ${escapeHtml(projectLabel)}</span>
+      <span>当前可见性: ${escapeHtml(getPrivacyLabel(session.is_private))}</span>
+      <span>更新时间: ${escapeHtml(session.updated_at || "-")}</span>
     </div>
   `;
 
@@ -148,13 +158,13 @@ function renderSessionList(state, elements) {
         <article class="entity-card ${selected}">
           <button class="entity-main" type="button" data-session-select="${escapeHtml(session.id)}">
             <div class="entity-title-row">
-              <strong>${escapeHtml(session.title || "Untitled Session")}</strong>
+              <strong>${escapeHtml(getSessionTitle(session.title))}</strong>
               <span class="entity-id">${escapeHtml(session.id.slice(0, 10))}</span>
             </div>
             <div class="tag-row">
-              ${badge(`project_id:${session.project_id ?? "null"}`, "soft")}
-              ${badge(session.is_private ? "private" : "public", session.is_private ? "danger" : "soft")}
-              ${badge(session.status, session.status === "active" ? "success" : session.status === "archived" ? "warning" : "danger")}
+              ${badge(session.project_id ? `归属项目 #${session.project_id}` : "无项目会话", "soft")}
+              ${badge(getPrivacyLabel(session.is_private), session.is_private ? "danger" : "soft")}
+              ${badge(getStatusLabel(session.status), session.status === "active" ? "success" : session.status === "archived" ? "warning" : "danger")}
             </div>
           </button>
           <div class="entity-actions">
@@ -168,19 +178,20 @@ function renderSessionList(state, elements) {
 }
 
 function renderProjectSelectOptions(state, elements) {
-  const options = [
-    '<option value="">无项目</option>',
+  const sessionOptions = [
+    '<option value="">无项目会话</option>',
     ...state.projects.map(
       (project) => `<option value="${project.id}">${escapeHtml(project.name)} (#${project.id})</option>`,
     ),
   ];
 
   const preferredValue = state.currentProjectId ? String(state.currentProjectId) : "";
-  elements.sessionProjectSelect.innerHTML = options.join("");
+  elements.sessionProjectSelect.innerHTML = sessionOptions.join("");
   elements.sessionProjectSelect.value = preferredValue;
 
   const moveOptions = [
     '<option value="">选择目标项目</option>',
+    '<option value="__none__">移出当前项目，变成无项目会话</option>',
     ...state.projects.map(
       (project) => `<option value="${project.id}">${escapeHtml(project.name)} (#${project.id})</option>`,
     ),
@@ -212,5 +223,5 @@ export function renderManagement(state, elements) {
 
   elements.archiveSessionButton.disabled = !hasSelectedSession || selectedSessionLocked;
   elements.deleteSessionButton.disabled = !hasSelectedSession || state.selectedSessionDetail?.status === "deleted";
-  elements.moveSessionButton.disabled = !hasSelectedSession || selectedSessionLocked || state.projects.length === 0;
+  elements.moveSessionButton.disabled = !hasSelectedSession || selectedSessionLocked;
 }

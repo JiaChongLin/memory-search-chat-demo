@@ -6,9 +6,8 @@ def test_create_project(client: TestClient) -> None:
         "/api/projects",
         json={
             "name": "Demo Project",
-            "description": "Phase 1 project",
-            "scope_mode": "project_only",
-            "is_isolated": True,
+            "description": "New access model project",
+            "access_mode": "project_only",
         },
     )
 
@@ -16,15 +15,14 @@ def test_create_project(client: TestClient) -> None:
     data = response.json()
     assert data["id"] > 0
     assert data["name"] == "Demo Project"
-    assert data["scope_mode"] == "project_only"
-    assert data["is_isolated"] is True
+    assert data["access_mode"] == "project_only"
     assert data["status"] == "active"
 
 
 def test_create_session_under_project(client: TestClient) -> None:
     project_response = client.post(
         "/api/projects",
-        json={"name": "Project A", "scope_mode": "conversation_only"},
+        json={"name": "Project A", "access_mode": "open"},
     )
     project_id = project_response.json()["id"]
 
@@ -82,3 +80,24 @@ def test_soft_delete_session_hides_it_from_default_reads(client: TestClient) -> 
 
     get_response = client.get(f"/api/sessions/{session_id}")
     assert get_response.status_code == 404
+
+
+def test_move_session_out_of_project(client: TestClient) -> None:
+    project_response = client.post(
+        "/api/projects",
+        json={"name": "Project A", "access_mode": "project_only"},
+    )
+    project_id = project_response.json()["id"]
+    session_response = client.post(
+        "/api/sessions",
+        json={"title": "Bound", "project_id": project_id},
+    )
+    session_id = session_response.json()["id"]
+
+    move_response = client.post(
+        f"/api/sessions/{session_id}/move",
+        json={"project_id": None},
+    )
+
+    assert move_response.status_code == 200
+    assert move_response.json()["project_id"] is None

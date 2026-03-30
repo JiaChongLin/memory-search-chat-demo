@@ -15,7 +15,7 @@ class SessionCreateRequest(BaseModel):
 
 
 class SessionProjectMoveRequest(BaseModel):
-    project_id: int
+    project_id: Optional[int] = None
 
 
 class SessionResponse(BaseModel):

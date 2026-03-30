@@ -3,15 +3,18 @@
 from typing import Literal
 
 
-SCOPE_MODE_CONVERSATION_ONLY = "conversation_only"
-SCOPE_MODE_PROJECT_ONLY = "project_only"
-SCOPE_MODE_PROJECT_PLUS_GLOBAL = "project_plus_global"
-SCOPE_MODE_GLOBAL = "global"
-PROJECT_SCOPE_MODES = (
-    SCOPE_MODE_CONVERSATION_ONLY,
-    SCOPE_MODE_PROJECT_ONLY,
-    SCOPE_MODE_PROJECT_PLUS_GLOBAL,
-    SCOPE_MODE_GLOBAL,
+PROJECT_ACCESS_OPEN = "open"
+PROJECT_ACCESS_PROJECT_ONLY = "project_only"
+PROJECT_ACCESS_MODES = (
+    PROJECT_ACCESS_OPEN,
+    PROJECT_ACCESS_PROJECT_ONLY,
+)
+
+SESSION_VISIBILITY_SHARED = "shared"
+SESSION_VISIBILITY_PRIVATE = "private"
+SESSION_VISIBILITY_MODES = (
+    SESSION_VISIBILITY_SHARED,
+    SESSION_VISIBILITY_PRIVATE,
 )
 
 STATUS_ACTIVE = "active"
@@ -24,17 +27,13 @@ RECORD_STATUSES = (
 )
 
 RELATED_SUMMARY_SOURCE_PROJECT = "project"
-RELATED_SUMMARY_SOURCE_GLOBAL = "global"
+RELATED_SUMMARY_SOURCE_EXTERNAL = "external"
 RELATED_SUMMARY_SOURCE_SCOPES = (
     RELATED_SUMMARY_SOURCE_PROJECT,
-    RELATED_SUMMARY_SOURCE_GLOBAL,
+    RELATED_SUMMARY_SOURCE_EXTERNAL,
 )
 
-ProjectScopeMode = Literal[
-    "conversation_only",
-    "project_only",
-    "project_plus_global",
-    "global",
-]
+ProjectAccessMode = Literal["open", "project_only"]
 RecordStatus = Literal["active", "archived", "deleted"]
-RelatedSummarySourceScope = Literal["project", "global"]
+SessionVisibilityMode = Literal["shared", "private"]
+RelatedSummarySourceScope = Literal["project", "external"]
