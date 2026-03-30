@@ -18,6 +18,11 @@ class ProjectCreateRequest(BaseModel):
     access_mode: ProjectAccessMode = PROJECT_ACCESS_OPEN
 
 
+class ProjectUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=4000)
+
+
 class ProjectResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

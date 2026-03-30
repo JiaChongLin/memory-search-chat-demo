@@ -46,7 +46,6 @@
           <div id="sessionNotice" class="notice hidden"></div>
           <section id="unassignedSection" class="sidebar-section"></section>
         </div>
-
       </aside>
 
       <main class="main-shell">
@@ -154,7 +153,7 @@
       <div class="modal-backdrop" data-close-project-modal="true"></div>
       <div class="modal-card">
         <div class="panel-head compact">
-          <h2>新建项目</h2>
+          <h2 id="projectModalTitle">新建项目</h2>
           <button id="closeProjectModalButton" class="icon-button" type="button" aria-label="关闭">
             ×
           </button>
@@ -175,13 +174,35 @@
 
           <p class="hint-text">开放项目：可访问外部可访问历史，且自身非私密会话也可被外部访问。</p>
           <p class="hint-text">仅限项目：只能访问项目内历史，且项目内会话对项目外不可见。</p>
-          <p class="sidebar-note">创建后项目访问模式当前不支持修改。</p>
+          <p id="projectAccessReadonly" class="hint-text modal-readonly-note hidden"></p>
+          <p id="projectModeHint" class="sidebar-note">创建后项目访问模式当前不支持修改。</p>
 
-          <button class="primary-button" type="submit">创建项目</button>
+          <button id="projectSubmitButton" class="primary-button" type="submit">创建项目</button>
         </form>
       </div>
     </div>
 
+
+    <div id="confirmModal" class="modal-shell hidden">
+      <div class="modal-backdrop" data-close-confirm-modal="true"></div>
+      <div class="modal-card confirm-modal-card">
+        <div class="panel-head compact">
+          <h2 id="confirmModalTitle">确认操作</h2>
+          <button id="closeConfirmModalButton" class="icon-button" type="button" aria-label="关闭">
+            ×
+          </button>
+        </div>
+
+        <div class="confirm-modal-body">
+          <p id="confirmModalBody" class="detail-copy"></p>
+        </div>
+
+        <div class="inline-row confirm-modal-actions">
+          <button id="confirmCancelButton" class="ghost-button" type="button">取消</button>
+          <button id="confirmAcceptButton" class="danger-button" type="button">确认删除</button>
+        </div>
+      </div>
+    </div>
     <template id="messageTemplate">
       <article class="message-card">
         <div class="message-head">
@@ -197,3 +218,4 @@
     <script type="module" src="./js/main.js"></script>
   </body>
 </html>
+

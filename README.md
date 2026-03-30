@@ -7,6 +7,7 @@
 - `POST /api/chat` 聊天接口
 - SQLite 持久化的 `Project` / `ChatSession` / `ChatMessage` / `SessionSummary`
 - 项目与会话管理 API
+- 项目名称 / 描述编辑（`access_mode` 创建后不可修改）
 - 基于 `Project.access_mode` 与 `ChatSession.is_private` 的上下文读取规则
 - 纯静态 Web 控制台，可测试项目、会话、聊天与调试字段
 - 会话完整消息历史回读
@@ -65,6 +66,17 @@
 - `PATCH /api/sessions/{session_id}`
 
 当前只更新 `title`。前端右侧会话头部提供轻量改名入口，改名成功后会同步更新左侧导航与右侧标题。
+
+## 项目编辑
+
+现在支持编辑项目的：
+
+- `name`
+- `description`
+
+当前不支持编辑：
+
+- `access_mode`（项目访问模式创建后不可修改）
 
 ## 删除与归档规则
 
@@ -133,6 +145,10 @@ pytest tests/test_context_rules.py tests/test_management_api.py tests/test_chat_
 - 前端默认直接使用本地开发后端地址，连接配置入口已从页面 UI 中移除。
 - 页面启动时仍会静默执行 health check，但不再在左侧显示单独的连接状态面板。
 - 右侧输入框现在是单行起步、自动增高的聊天输入区；超过最大高度后会在输入框内部滚动，发送后会恢复默认高度。
+- 左侧项目区现在支持编辑项目名称和描述；项目访问模式会展示在弹窗中，但创建后不可修改。
+- 删除项目和删除会话现在使用页面内自定义确认弹窗，不再使用浏览器默认确认框。
+- 创建 / 更新 / 删除这类成功提示当前会短暂显示后淡出，避免常驻占位。
+- 前端已减少无意义重渲染；在页面中选择文本后，鼠标松开不应再把选区立即清掉。
 
 ## 文档
 
@@ -144,3 +160,5 @@ pytest tests/test_context_rules.py tests/test_management_api.py tests/test_chat_
 ## License
 
 本项目采用 [MIT License](./LICENSE)。
+
+

@@ -70,7 +70,7 @@ function renderSidebarProjectItem(state, project) {
   const hasMoreSessions = sessions.length > 5;
 
   return `
-    <article class="nav-project-card ${isSelected ? "selected" : ""}">
+    <article class="nav-project-group ${isSelected ? "selected" : ""}">
       <div class="nav-project-top">
         <button class="nav-project-main" type="button" data-project-select="${project.id}">
           <span class="nav-project-title-row">
@@ -81,15 +81,32 @@ function renderSidebarProjectItem(state, project) {
             ${badge(getAccessModeLabel(project.access_mode), "scope")}
           </span>
         </button>
-        <button
-          class="nav-toggle-button"
-          type="button"
-          data-project-toggle="${project.id}"
-          aria-expanded="${isExpanded}"
-          title="${isExpanded ? "收起项目" : "展开项目"}"
-        >
-          ${isExpanded ? "－" : "＋"}
-        </button>
+        <div class="nav-project-actions">
+          <button
+            class="icon-button nav-inline-button"
+            type="button"
+            data-project-edit="${project.id}"
+            title="编辑项目"
+            aria-label="编辑项目"
+          >
+            编辑
+          </button>
+          ${
+            isSelected
+              ? `
+                <button
+                  class="icon-button nav-inline-button nav-delete-button"
+                  type="button"
+                  data-project-delete="${project.id}"
+                  title="删除项目"
+                  aria-label="删除项目"
+                >
+                  删除
+                </button>
+              `
+              : ""
+          }
+        </div>
       </div>
       ${
         isExpanded
@@ -109,11 +126,7 @@ function renderSidebarProjectItem(state, project) {
                   `
                   : '<div class="nav-empty">当前项目下还没有会话，可以先新建聊天。</div>'
               }
-              ${
-                isSelected
-                  ? `<button class="nav-more-button" type="button" data-project-delete="${project.id}">删除当前项目</button>`
-                  : ""
-              }
+              
             </div>
           `
           : ""
@@ -141,7 +154,7 @@ function renderProjectsSection(state, elements) {
         ? ""
         : `
           <div class="sidebar-section-body">
-            <div class="sidebar-note">项目访问模式决定跨项目边界。删除项目会级联删除项目内全部会话、消息和摘要。</div>
+            <div class="sidebar-note">项目访问模式决定跨项目边界，删除项目会级联删除项目内全部会话、消息和摘要。</div>
             <div class="nav-list">
               ${
                 projects.length
@@ -294,9 +307,36 @@ function renderNewChatMenu(state, elements) {
 }
 
 function renderProjectModal(state, elements) {
-  elements.projectModal.className = state.ui.projectModalOpen
-    ? "modal-shell"
-    : "modal-shell hidden";
+  const isOpen = state.ui.projectModalOpen;
+  const mode = state.ui.projectModalMode || "create";
+  const editingProject = state.projects.find(
+    (project) => project.id === state.ui.editingProjectId,
+  ) || null;
+
+  elements.projectModal.className = isOpen ? "modal-shell" : "modal-shell hidden";
+
+  if (elements.projectModalTitle) {
+    elements.projectModalTitle.textContent = mode === "edit" ? "编辑项目" : "新建项目";
+  }
+  if (elements.projectSubmitButton) {
+    elements.projectSubmitButton.textContent = mode === "edit" ? "保存修改" : "创建项目";
+  }
+  if (elements.projectModeHint) {
+    elements.projectModeHint.textContent =
+      mode === "edit"
+        ? "项目访问模式创建后不可修改，这里仅展示当前模式。"
+        : "创建后项目访问模式当前不支持修改。";
+  }
+  if (elements.projectAccessSelect) {
+    elements.projectAccessSelect.disabled = mode === "edit";
+  }
+  if (elements.projectAccessReadonly) {
+    elements.projectAccessReadonly.className =
+      mode === "edit" ? "hint-text modal-readonly-note" : "hint-text modal-readonly-note hidden";
+    elements.projectAccessReadonly.textContent = editingProject
+      ? `当前访问模式：${getAccessModeLabel(editingProject.access_mode)}`
+      : "";
+  }
 }
 
 export function renderManagement(state, elements) {
@@ -327,3 +367,4 @@ export function renderManagement(state, elements) {
     moveButton.disabled = !hasSelectedSession || selectedSessionLocked;
   }
 }
+

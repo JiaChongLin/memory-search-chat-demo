@@ -22,6 +22,66 @@ def test_create_project(client: TestClient) -> None:
     assert data["status"] == "active"
 
 
+def test_patch_project_updates_name(client: TestClient) -> None:
+    create_response = client.post(
+        "/api/projects",
+        json={"name": "Original Name", "access_mode": "open"},
+    )
+    project_id = create_response.json()["id"]
+
+    response = client.patch(
+        f"/api/projects/{project_id}",
+        json={"name": "Renamed Project"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Renamed Project"
+    assert response.json()["access_mode"] == "open"
+
+
+def test_patch_project_updates_description(client: TestClient) -> None:
+    create_response = client.post(
+        "/api/projects",
+        json={"name": "Project A", "description": None, "access_mode": "open"},
+    )
+    project_id = create_response.json()["id"]
+
+    response = client.patch(
+        f"/api/projects/{project_id}",
+        json={"description": "Updated description"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["description"] == "Updated description"
+
+
+def test_patch_project_does_not_allow_access_mode_update(client: TestClient) -> None:
+    create_response = client.post(
+        "/api/projects",
+        json={"name": "Locked Mode", "access_mode": "project_only"},
+    )
+    project_id = create_response.json()["id"]
+
+    response = client.patch(
+        f"/api/projects/{project_id}",
+        json={"name": "Locked Mode 2", "access_mode": "open"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Locked Mode 2"
+    assert data["access_mode"] == "project_only"
+
+
+def test_patch_project_returns_404_when_missing(client: TestClient) -> None:
+    response = client.patch(
+        "/api/projects/99999",
+        json={"name": "Missing"},
+    )
+
+    assert response.status_code == 404
+
+
 def test_create_session_under_project(client: TestClient) -> None:
     project_response = client.post(
         "/api/projects",

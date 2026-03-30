@@ -9,7 +9,7 @@ from backend.app.domain.constants import (
     PROJECT_ACCESS_PROJECT_ONLY,
     STATUS_ACTIVE,
 )
-from backend.app.schemas.projects import ProjectCreateRequest
+from backend.app.schemas.projects import ProjectCreateRequest, ProjectUpdateRequest
 
 
 class ProjectService:
@@ -19,10 +19,19 @@ class ProjectService:
         self._db = db
 
     def create_project(self, payload: ProjectCreateRequest) -> Project:
-        if self._projects_table_has_legacy_required_columns():
-            return self._create_project_with_legacy_columns(payload)
+        normalized_name = self._normalize_name(payload.name)
+        normalized_description = self._normalize_description(payload.description)
+        normalized_payload = payload.model_copy(
+            update={
+                "name": normalized_name,
+                "description": normalized_description,
+            }
+        )
 
-        project = Project(**payload.model_dump(), status=STATUS_ACTIVE)
+        if self._projects_table_has_legacy_required_columns():
+            return self._create_project_with_legacy_columns(normalized_payload)
+
+        project = Project(**normalized_payload.model_dump(), status=STATUS_ACTIVE)
         self._db.add(project)
         self._db.commit()
         self._db.refresh(project)
@@ -45,12 +54,47 @@ class ProjectService:
             )
         return project
 
+    def update_project(self, project_id: int, payload: ProjectUpdateRequest) -> Project:
+        project = self.get_project(project_id)
+        changed = False
+
+        if payload.name is not None:
+            project.name = self._normalize_name(payload.name)
+            changed = True
+
+        if payload.description is not None:
+            project.description = self._normalize_description(payload.description)
+            changed = True
+
+        if changed:
+            project.updated_at = utcnow()
+            self._db.add(project)
+            self._db.commit()
+            self._db.refresh(project)
+
+        return project
+
     def delete_project(self, project_id: int) -> int:
         project = self.get_project(project_id)
         deleted_project_id = project.id
         self._db.delete(project)
         self._db.commit()
         return deleted_project_id
+
+    def _normalize_name(self, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Project name cannot be empty.",
+            )
+        return normalized
+
+    def _normalize_description(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
     def _projects_table_has_legacy_required_columns(self) -> bool:
         bind = self._db.get_bind()
