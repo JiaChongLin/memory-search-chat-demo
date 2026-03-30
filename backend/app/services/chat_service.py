@@ -8,27 +8,30 @@ from sqlalchemy.orm import Session
 from backend.app.core.config import get_settings
 from backend.app.db.session import get_db
 from backend.app.schemas.chat import ChatRequest, ChatResponse, SearchSource
+from backend.app.services.context_resolver import ContextResolver
 from backend.app.services.llm_service import LLMService
 from backend.app.services.memory_service import MemoryService
 from backend.app.services.search_service import SearchService
 
 
 class ChatService:
-    """负责串联记忆、搜索和模型调用的聊天主流程。"""
+    """Coordinate context resolution, search, model calls, and persistence."""
 
     def __init__(
         self,
         memory_service: MemoryService,
+        context_resolver: ContextResolver,
         search_service: SearchService,
         llm_service: LLMService,
     ) -> None:
         self._memory_service = memory_service
+        self._context_resolver = context_resolver
         self._search_service = search_service
         self._llm_service = llm_service
 
     def handle_chat(self, payload: ChatRequest) -> ChatResponse:
         session_id = payload.session_id or self._create_session_id()
-        resolved_context = self._memory_service.resolve_context(session_id)
+        resolved_context = self._context_resolver.resolve_context(session_id)
 
         search_triggered = self._search_service.should_search(payload.message)
         search_results = (
@@ -81,11 +84,13 @@ def get_chat_service(db: Session = Depends(get_db)) -> ChatService:
         summary_enabled=settings.memory_summary_enabled,
         summary_max_chars=settings.memory_summary_max_chars,
     )
+    context_resolver = ContextResolver(db=db, memory_service=memory_service)
     search_service = SearchService(settings=settings)
     llm_service = LLMService(settings=settings)
 
     return ChatService(
         memory_service=memory_service,
+        context_resolver=context_resolver,
         search_service=search_service,
         llm_service=llm_service,
     )

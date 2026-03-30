@@ -6,6 +6,13 @@ from typing import Optional
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from backend.app.domain.constants import (
+    PROJECT_SCOPE_MODES,
+    RECORD_STATUSES,
+    SCOPE_MODE_CONVERSATION_ONLY,
+    STATUS_ACTIVE,
+)
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -15,24 +22,15 @@ class Base(DeclarativeBase):
     pass
 
 
-PROJECT_SCOPE_MODES = (
-    "conversation_only",
-    "project_only",
-    "project_plus_global",
-    "global",
-)
-RECORD_STATUSES = ("active", "archived", "deleted")
-
-
 class Project(Base):
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    scope_mode: Mapped[str] = mapped_column(String(32), default="conversation_only")
+    scope_mode: Mapped[str] = mapped_column(String(32), default=SCOPE_MODE_CONVERSATION_ONLY)
     is_isolated: Mapped[bool] = mapped_column(Boolean, default=False)
-    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    status: Mapped[str] = mapped_column(String(20), default=STATUS_ACTIVE, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,
@@ -56,7 +54,7 @@ class ChatSession(Base):
         nullable=True,
         index=True,
     )
-    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    status: Mapped[str] = mapped_column(String(20), default=STATUS_ACTIVE, index=True)
     is_private: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

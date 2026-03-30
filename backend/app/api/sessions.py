@@ -1,13 +1,10 @@
 ﻿from __future__ import annotations
 
 from typing import Optional
-from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from backend.app.db.models import ChatSession, Project, utcnow
 from backend.app.db.session import get_db
 from backend.app.schemas.chat import ErrorResponse
 from backend.app.schemas.sessions import (
@@ -15,39 +12,10 @@ from backend.app.schemas.sessions import (
     SessionProjectMoveRequest,
     SessionResponse,
 )
+from backend.app.services.session_service import SessionService
 
 
 router = APIRouter()
-
-
-def _get_project_or_404(db: Session, project_id: int) -> Project:
-    project = db.get(Project, project_id)
-    if project is None or project.status == "deleted":
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found.",
-        )
-    return project
-
-
-def _get_session_or_404(
-    db: Session,
-    session_id: str,
-    *,
-    allow_deleted: bool = False,
-) -> ChatSession:
-    chat_session = db.get(ChatSession, session_id)
-    if chat_session is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found.",
-        )
-    if not allow_deleted and chat_session.status == "deleted":
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found.",
-        )
-    return chat_session
 
 
 @router.post(
@@ -61,18 +29,7 @@ def create_session(
     payload: SessionCreateRequest,
     db: Session = Depends(get_db),
 ) -> SessionResponse:
-    if payload.project_id is not None:
-        _get_project_or_404(db, payload.project_id)
-
-    chat_session = ChatSession(
-        id=uuid4().hex,
-        title=payload.title,
-        project_id=payload.project_id,
-        is_private=payload.is_private,
-    )
-    db.add(chat_session)
-    db.commit()
-    db.refresh(chat_session)
+    chat_session = SessionService(db).create_session(payload)
     return SessionResponse.model_validate(chat_session)
 
 
@@ -87,18 +44,12 @@ def list_sessions(
     include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> list[SessionResponse]:
-    stmt = select(ChatSession).order_by(
-        ChatSession.updated_at.desc(),
-        ChatSession.created_at.desc(),
+    sessions = SessionService(db).list_sessions(
+        project_id=project_id,
+        include_archived=include_archived,
+        include_deleted=include_deleted,
     )
-    if project_id is not None:
-        stmt = stmt.where(ChatSession.project_id == project_id)
-    if not include_archived:
-        stmt = stmt.where(ChatSession.status != "archived")
-    if not include_deleted:
-        stmt = stmt.where(ChatSession.status != "deleted")
-
-    return [SessionResponse.model_validate(chat_session) for chat_session in db.scalars(stmt)]
+    return [SessionResponse.model_validate(chat_session) for chat_session in sessions]
 
 
 @router.get(
@@ -111,7 +62,7 @@ def get_session(
     session_id: str,
     db: Session = Depends(get_db),
 ) -> SessionResponse:
-    chat_session = _get_session_or_404(db, session_id)
+    chat_session = SessionService(db).get_session(session_id)
     return SessionResponse.model_validate(chat_session)
 
 
@@ -125,11 +76,7 @@ def archive_session(
     session_id: str,
     db: Session = Depends(get_db),
 ) -> SessionResponse:
-    chat_session = _get_session_or_404(db, session_id)
-    chat_session.status = "archived"
-    chat_session.updated_at = utcnow()
-    db.commit()
-    db.refresh(chat_session)
+    chat_session = SessionService(db).archive_session(session_id)
     return SessionResponse.model_validate(chat_session)
 
 
@@ -143,11 +90,7 @@ def delete_session(
     session_id: str,
     db: Session = Depends(get_db),
 ) -> SessionResponse:
-    chat_session = _get_session_or_404(db, session_id)
-    chat_session.status = "deleted"
-    chat_session.updated_at = utcnow()
-    db.commit()
-    db.refresh(chat_session)
+    chat_session = SessionService(db).soft_delete_session(session_id)
     return SessionResponse.model_validate(chat_session)
 
 
@@ -162,11 +105,5 @@ def move_session_to_project(
     payload: SessionProjectMoveRequest,
     db: Session = Depends(get_db),
 ) -> SessionResponse:
-    chat_session = _get_session_or_404(db, session_id)
-    project = _get_project_or_404(db, payload.project_id)
-
-    chat_session.project_id = project.id
-    chat_session.updated_at = utcnow()
-    db.commit()
-    db.refresh(chat_session)
+    chat_session = SessionService(db).move_session_to_project(session_id, payload)
     return SessionResponse.model_validate(chat_session)

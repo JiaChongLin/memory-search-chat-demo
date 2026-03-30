@@ -12,6 +12,7 @@ from backend.app.db.models import Base
 from backend.app.db.session import get_db
 from backend.app.main import app
 from backend.app.services.chat_service import ChatService, get_chat_service
+from backend.app.services.context_resolver import ContextResolver
 from backend.app.services.llm_service import LLMService
 from backend.app.services.memory_service import MemoryService
 from backend.app.services.search_service import SearchResult, SearchService
@@ -60,13 +61,15 @@ def client(monkeypatch):
     def override_chat_service():
         db = testing_session_local()
         try:
+            memory_service = MemoryService(
+                db=db,
+                short_window=settings.memory_short_window,
+                summary_enabled=settings.memory_summary_enabled,
+                summary_max_chars=settings.memory_summary_max_chars,
+            )
             yield ChatService(
-                memory_service=MemoryService(
-                    db=db,
-                    short_window=settings.memory_short_window,
-                    summary_enabled=settings.memory_summary_enabled,
-                    summary_max_chars=settings.memory_summary_max_chars,
-                ),
+                memory_service=memory_service,
+                context_resolver=ContextResolver(db=db, memory_service=memory_service),
                 search_service=SearchService(settings=settings),
                 llm_service=LLMService(settings=settings),
             )
