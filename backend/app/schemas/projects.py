@@ -28,3 +28,9 @@ class ProjectResponse(BaseModel):
     status: RecordStatus
     created_at: datetime
     updated_at: datetime
+
+
+class ProjectDeleteResponse(BaseModel):
+    success: bool = True
+    project_id: int
+    message: str

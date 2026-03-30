@@ -1,98 +1,7 @@
-﻿from pathlib import Path
-from uuid import uuid4
-
-import pytest
+﻿import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-import backend.app.main as main_module
-from backend.app.core.config import Settings
-from backend.app.db.models import Base
-from backend.app.db.session import get_db
-from backend.app.main import app
-from backend.app.services.chat_service import ChatService, get_chat_service
-from backend.app.services.context_resolver import ContextResolver
-from backend.app.services.llm_service import LLMService
-from backend.app.services.memory_service import MemoryService
 from backend.app.services.search_service import SearchResult, SearchService
-
-
-@pytest.fixture
-def client(monkeypatch):
-    temp_dir = Path("tests/.tmp")
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    db_path = temp_dir / f"chat_api_test_{uuid4().hex}.db"
-
-    engine = create_engine(
-        f"sqlite:///{db_path.as_posix()}",
-        connect_args={"check_same_thread": False},
-    )
-    testing_session_local = sessionmaker(
-        autocommit=False,
-        autoflush=False,
-        bind=engine,
-    )
-    Base.metadata.create_all(bind=engine)
-
-    settings = Settings(
-        app_name="memory-search-chat-demo",
-        app_env="test",
-        api_prefix="/api",
-        database_url=f"sqlite:///{db_path.as_posix()}",
-        llm_provider="dashscope",
-        llm_api_key="",
-        llm_model="qwen-plus",
-        llm_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        llm_timeout_seconds=30,
-        llm_fallback_enabled=True,
-        memory_short_window=6,
-        memory_summary_enabled=True,
-        memory_summary_max_chars=600,
-        search_enabled=True,
-        search_provider="duckduckgo",
-        search_base_url="https://html.duckduckgo.com/html/",
-        search_timeout_seconds=15,
-        search_max_results=5,
-    )
-
-    monkeypatch.setattr(main_module, "init_db", lambda: None)
-
-    def override_chat_service():
-        db = testing_session_local()
-        try:
-            memory_service = MemoryService(
-                db=db,
-                short_window=settings.memory_short_window,
-                summary_enabled=settings.memory_summary_enabled,
-                summary_max_chars=settings.memory_summary_max_chars,
-            )
-            yield ChatService(
-                memory_service=memory_service,
-                context_resolver=ContextResolver(db=db, memory_service=memory_service),
-                search_service=SearchService(settings=settings),
-                llm_service=LLMService(settings=settings),
-            )
-        finally:
-            db.close()
-
-    def override_db():
-        db = testing_session_local()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_chat_service] = override_chat_service
-    app.dependency_overrides[get_db] = override_db
-
-    with TestClient(app) as test_client:
-        yield test_client
-
-    app.dependency_overrides.clear()
-    engine.dispose()
-    if db_path.exists():
-        db_path.unlink()
 
 
 def test_chat_first_request_returns_session_and_reply(client: TestClient) -> None:
@@ -156,3 +65,31 @@ def test_chat_returns_search_sources_when_search_hits(
     assert data["search_used"] is True
     assert data["sources"][0]["title"] == "Example News"
     assert data["context_scope"] == "open"
+
+
+def test_archived_session_cannot_continue_chatting(client: TestClient) -> None:
+    create_response = client.post("/api/sessions", json={"title": "Archive me"})
+    session_id = create_response.json()["id"]
+    assert client.post(f"/api/sessions/{session_id}/archive").status_code == 200
+
+    response = client.post(
+        "/api/chat",
+        json={"session_id": session_id, "message": "still there?"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == "Archived sessions cannot continue chatting."
+
+
+def test_deleted_session_cannot_be_recreated_by_chat(client: TestClient) -> None:
+    create_response = client.post("/api/sessions", json={"title": "Delete me"})
+    session_id = create_response.json()["id"]
+    assert client.delete(f"/api/sessions/{session_id}").status_code == 200
+
+    response = client.post(
+        "/api/chat",
+        json={"session_id": session_id, "message": "come back"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == "Session not found."

@@ -49,10 +49,7 @@ export function healthCheck(baseUrl) {
 }
 
 export function listProjects(baseUrl) {
-  return requestJson(baseUrl, "/api/projects", { method: "GET" }, {
-    include_archived: true,
-    include_deleted: false,
-  });
+  return requestJson(baseUrl, "/api/projects", { method: "GET" });
 }
 
 export function getProject(baseUrl, projectId) {
@@ -66,10 +63,15 @@ export function createProject(baseUrl, payload) {
   });
 }
 
+export function deleteProject(baseUrl, projectId) {
+  return requestJson(baseUrl, `/api/projects/${projectId}`, {
+    method: "DELETE",
+  });
+}
+
 export function listSessions(baseUrl, query = {}) {
   return requestJson(baseUrl, "/api/sessions", { method: "GET" }, {
     include_archived: true,
-    include_deleted: true,
     ...query,
   });
 }

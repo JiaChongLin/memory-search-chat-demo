@@ -1,11 +1,15 @@
 ﻿from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
 from backend.app.schemas.chat import ErrorResponse
-from backend.app.schemas.projects import ProjectCreateRequest, ProjectResponse
+from backend.app.schemas.projects import (
+    ProjectCreateRequest,
+    ProjectDeleteResponse,
+    ProjectResponse,
+)
 from backend.app.services.project_service import ProjectService
 
 
@@ -33,14 +37,9 @@ def create_project(
     summary="List projects",
 )
 def list_projects(
-    include_archived: bool = Query(default=True),
-    include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> list[ProjectResponse]:
-    projects = ProjectService(db).list_projects(
-        include_archived=include_archived,
-        include_deleted=include_deleted,
-    )
+    projects = ProjectService(db).list_projects()
     return [ProjectResponse.model_validate(project) for project in projects]
 
 
@@ -56,3 +55,20 @@ def get_project(
 ) -> ProjectResponse:
     project = ProjectService(db).get_project(project_id)
     return ProjectResponse.model_validate(project)
+
+
+@router.delete(
+    "/{project_id}",
+    response_model=ProjectDeleteResponse,
+    summary="Delete a project",
+    responses={404: {"model": ErrorResponse}},
+)
+def delete_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+) -> ProjectDeleteResponse:
+    deleted_project_id = ProjectService(db).delete_project(project_id)
+    return ProjectDeleteResponse(
+        project_id=deleted_project_id,
+        message="Project deleted.",
+    )

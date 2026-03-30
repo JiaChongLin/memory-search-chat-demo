@@ -19,11 +19,9 @@ SESSION_VISIBILITY_MODES = (
 
 STATUS_ACTIVE = "active"
 STATUS_ARCHIVED = "archived"
-STATUS_DELETED = "deleted"
 RECORD_STATUSES = (
     STATUS_ACTIVE,
     STATUS_ARCHIVED,
-    STATUS_DELETED,
 )
 
 RELATED_SUMMARY_SOURCE_PROJECT = "project"
@@ -34,6 +32,6 @@ RELATED_SUMMARY_SOURCE_SCOPES = (
 )
 
 ProjectAccessMode = Literal["open", "project_only"]
-RecordStatus = Literal["active", "archived", "deleted"]
+RecordStatus = Literal["active", "archived"]
 SessionVisibilityMode = Literal["shared", "private"]
 RelatedSummarySourceScope = Literal["project", "external"]

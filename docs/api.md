@@ -81,7 +81,6 @@
 
 - `is_private=true`
 - `status=archived`
-- `status=deleted`
 - 没有 summary 的会话
 
 #### 项目层边界
@@ -119,7 +118,6 @@
 查询参数：
 
 - `include_archived`，默认 `true`
-- `include_deleted`，默认 `false`
 
 ### GET /api/projects/{project_id}
 
@@ -154,7 +152,6 @@
 
 - `project_id`
 - `include_archived`，默认 `false`
-- `include_deleted`，默认 `false`
 
 ### GET /api/sessions/{session_id}
 
@@ -166,7 +163,6 @@
 
 ### DELETE /api/sessions/{session_id}
 
-软删除会话，把 `status` 改成 `deleted`。
 
 ### POST /api/sessions/{session_id}/move
 
@@ -204,7 +200,6 @@
 
 - `active`
 - `archived`
-- `deleted`
 
 ## 当前未实现
 
@@ -214,3 +209,17 @@
 - 向量库检索
 - 其他会话完整消息拼接
 - 更复杂的召回排序与打分
+
+## 当前删除接口语义
+
+- DELETE /api/sessions/{session_id}：硬删除会话，返回简单成功响应；删除后再次查询该会话应返回 404。
+- DELETE /api/projects/{project_id}：硬删除项目，并级联删除项目内全部会话、消息和摘要。
+- GET /api/sessions 当前只支持通过 include_archived 控制是否显示归档会话，不再暴露 include_deleted。
+- 项目当前只支持创建、列表、查看、删除，不提供归档接口。
+
+## 当前删除接口语义
+
+- `DELETE /api/sessions/{session_id}`：硬删除会话，返回简单成功响应；删除后再次查询该会话应返回 404。
+- `DELETE /api/projects/{project_id}`：硬删除项目，并级联删除项目内全部会话、消息和摘要。
+- `GET /api/sessions` 当前只支持通过 `include_archived` 控制是否显示归档会话，不再暴露 `include_deleted`。
+- 项目当前只支持创建、列表、查看、删除，不提供归档接口。

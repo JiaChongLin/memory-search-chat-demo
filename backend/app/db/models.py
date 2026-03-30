@@ -38,7 +38,11 @@ class Project(Base):
         onupdate=utcnow,
     )
 
-    sessions: Mapped[list["ChatSession"]] = relationship(back_populates="project")
+    sessions: Mapped[list["ChatSession"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class ChatSession(Base):
@@ -47,7 +51,7 @@ class ChatSession(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     project_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("projects.id", ondelete="SET NULL"),
+        ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -67,11 +71,13 @@ class ChatSession(Base):
     messages: Mapped[list["ChatMessage"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     summary: Mapped[Optional["SessionSummary"]] = relationship(
         back_populates="session",
         uselist=False,
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 

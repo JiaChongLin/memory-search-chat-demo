@@ -87,7 +87,6 @@ API 层继续保持轻量，主要负责：
 - `ProjectService`
   创建 / 列表 / 单查项目
 - `SessionService`
-  创建 / 列表 / 单查 / 归档 / 软删除 / 移动会话 / 移出项目
 
 ## 数据模型关系
 
@@ -159,7 +158,6 @@ Project 1 --- N ChatSession 1 --- N ChatMessage
 - 其他会话完整消息历史
 - private 会话摘要
 - archived 会话摘要
-- deleted 会话摘要
 
 ## 未来扩展：Tool Layer（预留）
 
@@ -201,3 +199,17 @@ backend/app/tools/
 ```
 
 上面只是预留示意，不代表当前仓库已经有这些文件，也不代表当前实现已经切到 tool-first 架构。
+
+## 当前删除链路说明
+
+- Project -> ChatSession -> ChatMessage / SessionSummary 现在按级联硬删除组织。
+- 删除项目时，会通过 ORM 与数据库外键级联删除项目内全部会话及其消息、摘要。
+- 删除会话时，会真正删除 ChatSession 记录以及关联的消息和摘要。
+- rchived 只作为会话保留状态存在，不再存在 deleted 状态语义。
+
+## 当前删除链路说明
+
+- `Project -> ChatSession -> ChatMessage / SessionSummary` 现在按级联硬删除组织。
+- 删除项目时，会通过 ORM 与数据库外键级联删除项目内全部会话及其消息、摘要。
+- 删除会话时，会真正删除 `ChatSession` 记录以及关联的消息和摘要。
+- `archived` 只作为会话保留状态存在，不再存在 `deleted` 状态语义。

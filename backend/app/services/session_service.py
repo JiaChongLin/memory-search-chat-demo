@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models import ChatSession, Project, utcnow
-from backend.app.domain.constants import STATUS_ARCHIVED, STATUS_DELETED
+from backend.app.domain.constants import RECORD_STATUSES, STATUS_ACTIVE, STATUS_ARCHIVED
 from backend.app.schemas.sessions import SessionCreateRequest, SessionProjectMoveRequest
 
 
@@ -26,6 +26,7 @@ class SessionService:
             title=payload.title,
             project_id=payload.project_id,
             is_private=payload.is_private,
+            status=STATUS_ACTIVE,
         )
         self._db.add(chat_session)
         self._db.commit()
@@ -37,7 +38,6 @@ class SessionService:
         *,
         project_id: int | None = None,
         include_archived: bool = False,
-        include_deleted: bool = False,
     ) -> list[ChatSession]:
         stmt = select(ChatSession).order_by(
             ChatSession.updated_at.desc(),
@@ -45,10 +45,10 @@ class SessionService:
         )
         if project_id is not None:
             stmt = stmt.where(ChatSession.project_id == project_id)
-        if not include_archived:
-            stmt = stmt.where(ChatSession.status != STATUS_ARCHIVED)
-        if not include_deleted:
-            stmt = stmt.where(ChatSession.status != STATUS_DELETED)
+        if include_archived:
+            stmt = stmt.where(ChatSession.status.in_(RECORD_STATUSES))
+        else:
+            stmt = stmt.where(ChatSession.status == STATUS_ACTIVE)
         return list(self._db.scalars(stmt))
 
     def get_session(self, session_id: str) -> ChatSession:
@@ -62,13 +62,12 @@ class SessionService:
         self._db.refresh(chat_session)
         return chat_session
 
-    def soft_delete_session(self, session_id: str) -> ChatSession:
+    def delete_session(self, session_id: str) -> str:
         chat_session = self._get_session_or_404(session_id)
-        chat_session.status = STATUS_DELETED
-        chat_session.updated_at = utcnow()
+        deleted_session_id = chat_session.id
+        self._db.delete(chat_session)
         self._db.commit()
-        self._db.refresh(chat_session)
-        return chat_session
+        return deleted_session_id
 
     def move_session_to_project(
         self,
@@ -89,7 +88,7 @@ class SessionService:
 
     def _get_project_or_404(self, project_id: int) -> Project:
         project = self._db.get(Project, project_id)
-        if project is None or project.status == STATUS_DELETED:
+        if project is None or project.status != STATUS_ACTIVE:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found.",
@@ -98,7 +97,7 @@ class SessionService:
 
     def _get_session_or_404(self, session_id: str) -> ChatSession:
         chat_session = self._db.get(ChatSession, session_id)
-        if chat_session is None or chat_session.status == STATUS_DELETED:
+        if chat_session is None or chat_session.status not in RECORD_STATUSES:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found.",
