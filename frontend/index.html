@@ -47,34 +47,6 @@
           <section id="unassignedSection" class="sidebar-section"></section>
         </div>
 
-        <div class="sidebar-footer connection-box">
-          <div class="panel-head compact">
-            <h2>连接状态</h2>
-            <span id="healthBadge" class="badge neutral">未检查</span>
-          </div>
-
-          <label class="field-label" for="backendBaseUrl">后端地址</label>
-          <div class="inline-row">
-            <input
-              id="backendBaseUrl"
-              class="text-input"
-              type="text"
-              placeholder="http://127.0.0.1:8000"
-              autocomplete="off"
-            />
-          </div>
-          <div class="inline-row">
-            <button id="saveConfigButton" class="ghost-button" type="button">保存并检查</button>
-            <button id="checkHealthButton" class="secondary-button" type="button">仅检查连接</button>
-          </div>
-
-          <div class="stats-row single-column">
-            <div class="stat-card">
-              <span class="stat-label">运行环境</span>
-              <strong id="environmentValue">unknown</strong>
-            </div>
-          </div>
-        </div>
       </aside>
 
       <main class="main-shell">
@@ -163,11 +135,10 @@
         </section>
 
         <form id="composerForm" class="panel composer composer-panel">
-          <label class="field-label" for="messageInput">继续当前会话</label>
           <textarea
             id="messageInput"
             class="text-area composer-input"
-            rows="4"
+            rows="1"
             maxlength="4000"
             placeholder="先在左侧选择一个会话，再开始聊天。"
           ></textarea>

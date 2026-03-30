@@ -48,9 +48,6 @@ import {
 } from "./state.js";
 
 const elements = {
-  backendBaseUrl: document.querySelector("#backendBaseUrl"),
-  saveConfigButton: document.querySelector("#saveConfigButton"),
-  checkHealthButton: document.querySelector("#checkHealthButton"),
   newChatButton: document.querySelector("#newChatButton"),
   searchChatsButton: document.querySelector("#searchChatsButton"),
   projectForm: document.querySelector("#projectForm"),
@@ -68,8 +65,6 @@ const elements = {
   currentVisibilityBadge: document.querySelector("#currentVisibilityBadge"),
   currentStatusBadge: document.querySelector("#currentStatusBadge"),
   renameSessionButton: document.querySelector("#renameSessionButton"),
-  healthBadge: document.querySelector("#healthBadge"),
-  environmentValue: document.querySelector("#environmentValue"),
   projectModal: document.querySelector("#projectModal"),
   projectNameInput: document.querySelector("#projectNameInput"),
   projectDescriptionInput: document.querySelector("#projectDescriptionInput"),
@@ -88,6 +83,9 @@ const elements = {
   newChatMenu: document.querySelector("#newChatMenu"),
   quickChips: document.querySelectorAll(".quick-chip"),
 };
+
+const COMPOSER_MIN_HEIGHT = 52;
+const COMPOSER_MAX_HEIGHT = 188;
 
 function formatErrorMessage(error) {
   if (error instanceof Error && error.message) {
@@ -108,7 +106,7 @@ function parseOptionalProjectId(value) {
 }
 
 function getBaseUrl() {
-  return normalizeBaseUrl(elements.backendBaseUrl.value || getState().backendBaseUrl);
+  return normalizeBaseUrl(getState().backendBaseUrl);
 }
 
 function buildAssistantDebug(responseData) {
@@ -158,6 +156,29 @@ function clearSessionSelection() {
   clearCurrentSessionSelection();
 }
 
+function resizeComposer() {
+  const textarea = elements.messageInput;
+  if (!textarea) {
+    return;
+  }
+
+  textarea.style.height = `${COMPOSER_MIN_HEIGHT}px`;
+  const nextHeight = Math.min(textarea.scrollHeight, COMPOSER_MAX_HEIGHT);
+  textarea.style.height = `${Math.max(COMPOSER_MIN_HEIGHT, nextHeight)}px`;
+  textarea.style.overflowY = textarea.scrollHeight > COMPOSER_MAX_HEIGHT ? "auto" : "hidden";
+}
+
+function resetComposer() {
+  const textarea = elements.messageInput;
+  if (!textarea) {
+    return;
+  }
+
+  textarea.value = "";
+  textarea.style.height = `${COMPOSER_MIN_HEIGHT}px`;
+  textarea.style.overflowY = "hidden";
+}
+
 async function ensureSessionMessages(sessionId, options = {}) {
   if (!sessionId) {
     return;
@@ -192,22 +213,14 @@ async function refreshHealth(silent = false) {
   setBusy("health", true);
   try {
     const baseUrl = getBaseUrl();
-    const payload = await healthCheck(baseUrl);
+    await healthCheck(baseUrl);
     setBackendBaseUrl(baseUrl);
-    setHealth({
-      status: "success",
-      label: "已连接",
-      environment: payload.environment || "unknown",
-    });
+    setHealth({ status: "success", label: "已连接", environment: "connected" });
     if (!silent) {
-      setNotice("global", "后端连接正常。", "success");
+      clearNotice("global");
     }
   } catch (error) {
-    setHealth({
-      status: "warning",
-      label: "连接异常",
-      environment: "不可用",
-    });
+    setHealth({ status: "warning", label: "连接异常", environment: "unavailable" });
     if (!silent) {
       setNotice("global", `检查后端失败：${formatErrorMessage(error)}`, "danger");
     }
@@ -520,7 +533,7 @@ async function handleChatSubmit(event) {
     timestamp: Date.now(),
     sources: [],
   });
-  elements.messageInput.value = "";
+  resetComposer();
   clearNotice("chat");
   setBusy("chat", true);
 
@@ -579,6 +592,7 @@ function handleQuickChipClick(event) {
   }
 
   elements.messageInput.value = chip.dataset.prompt || "";
+  resizeComposer();
   elements.messageInput.focus();
 }
 
@@ -710,15 +724,11 @@ function handleGlobalClick(event) {
 }
 
 function wireEvents() {
-  elements.saveConfigButton.addEventListener("click", () => {
-    setBackendBaseUrl(normalizeBaseUrl(elements.backendBaseUrl.value));
-    refreshHealth();
-  });
-  elements.checkHealthButton.addEventListener("click", () => refreshHealth());
   elements.newChatButton.addEventListener("click", handleNewChatClick);
   elements.projectForm.addEventListener("submit", handleProjectCreate);
   elements.composerForm.addEventListener("submit", handleChatSubmit);
   elements.messageInput.addEventListener("keydown", handleComposerKeydown);
+  elements.messageInput.addEventListener("input", resizeComposer);
   elements.quickChips.forEach((chip) => chip.addEventListener("click", handleQuickChipClick));
   document.addEventListener("click", handleGlobalClick);
 }
@@ -731,6 +741,7 @@ function renderAll(state) {
 async function bootstrap() {
   subscribe(renderAll);
   wireEvents();
+  resizeComposer();
   await refreshHealth(true);
   await refreshProjects({ silent: true });
   await refreshSessions({ silent: true, forceMessages: true });
