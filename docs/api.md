@@ -1,27 +1,19 @@
-# API 说明
+﻿# API
 
-## 概述
+当前 API 分为两部分：
 
-当前后端公开的主要接口有两个：
+- 聊天接口
+- 项目 / 会话管理接口
 
-- `GET /health`
-- `POST /api/chat`
+本阶段的重点是：聊天接口已经接入项目层 + 会话层的上下文访问规则。
 
-接口目标是服务当前 demo 页面和本地联调，不是面向复杂第三方集成场景设计的完整开放 API。
+## 基础接口
 
-## GET /health
+### GET /health
 
-### 作用
+返回服务健康状态。
 
-用于检查后端服务是否启动，以及当前运行环境是什么。
-
-### 请求
-
-```http
-GET /health
-```
-
-### 成功响应示例
+响应示例：
 
 ```json
 {
@@ -30,243 +22,193 @@ GET /health
 }
 ```
 
-### 字段说明
+## 聊天接口
 
-- `status`
-  服务状态。当前正常情况下固定返回 `healthy`。
-- `environment`
-  当前运行环境，来自后端配置。
+### POST /api/chat
 
-## POST /api/chat
+处理单轮聊天。
 
-### 作用
-
-接收一轮用户消息，完成上下文组织、搜索、模型调用和记忆落库，然后返回本轮回复。
-
-### 请求
-
-```http
-POST /api/chat
-Content-Type: application/json
-```
-
-### 请求体字段说明
+请求体：
 
 ```json
 {
-  "message": "你好，请记住我叫小王",
+  "message": "hello demo",
   "session_id": "optional-session-id"
 }
 ```
 
-- `message`
-  用户当前输入的消息。
-  - 类型：`string`
-  - 必填：是
-  - 限制：1 到 4000 个字符
+说明：
 
-- `session_id`
-  会话标识。
-  - 类型：`string`
-  - 必填：否
-  - 限制：最长 64 个字符
-  - 说明：
-    - 首次请求可以不传
-    - 不传时后端会创建新的会话
-    - 多轮对话时应复用后端第一次返回的 `session_id`
+- `session_id` 不传时会自动创建新会话 ID
+- 当前会话自己的最近消息仍然优先进入上下文
+- 其他会话当前只以摘要形式参与上下文
+- allowlist 仍未实现
 
-### 成功响应示例
+响应示例：
 
 ```json
 {
   "session_id": "8d4e5c7c5e954a5fa9f6d8f7567dc001",
-  "reply": "你好，我会在当前会话里继续记住你提供的信息。",
+  "reply": "demo reply",
   "summary": null,
-  "used_live_model": true,
-  "fallback_reason": null,
+  "used_live_model": false,
+  "fallback_reason": "missing_api_key",
   "search_triggered": false,
   "search_used": false,
-  "sources": []
+  "sources": [],
+  "context_scope": "conversation_only",
+  "related_summary_count": 0
 }
 ```
 
-### 响应字段说明
+新增调试字段：
 
-- `session_id`
-  当前会话 ID。首次请求时由后端生成，后续请求应复用它。
+- `context_scope`
+  当前会话实际使用的上下文边界
+- `related_summary_count`
+  本次注入到上下文中的其他会话摘要数量
 
-- `reply`
-  本轮助手回复内容。
+### 聊天上下文规则
 
-- `summary`
-  当前会话摘要。
-  - 当消息轮数还不多时，可能为 `null`
-  - 当会话变长后，后端会开始返回压缩后的摘要
+#### conversation_only
 
-- `used_live_model`
-  是否成功使用了真实在线模型。
-  - `true`：本次回复来自真实模型
-  - `false`：本次回复走了本地降级逻辑
+只读当前会话最近消息和当前会话摘要。
 
-- `fallback_reason`
-  降级原因。
-  - 如果本次使用了真实模型，通常为 `null`
-  - 如果走了降级逻辑，会返回简要原因，例如：
-    - `missing_api_key`
-    - `provider_request_failed:...`
+#### project_only
 
-- `search_triggered`
-  是否命中了搜索触发逻辑。
+读取：
 
-- `search_used`
-  是否真的拿到了搜索结果并参与返回。
-  - `true`：通常表示 `sources` 非空
-  - `false`：可能是未触发搜索，也可能是触发了但没有取到结果
+- 当前会话最近消息
+- 当前会话摘要
+- 同项目下可访问的其他会话摘要
 
-- `sources`
-  搜索来源列表。
+#### project_plus_global
 
-## sources 结构说明
+读取：
 
-`sources` 是一个数组，每一项结构如下：
+- 当前会话最近消息
+- 当前会话摘要
+- 同项目可访问摘要
+- 项目外可访问摘要
+
+#### global
+
+读取：
+
+- 当前会话最近消息
+- 当前会话摘要
+- 所有允许访问的其他会话摘要
+
+### 聊天上下文过滤条件
+
+以下内容当前不会进入上下文：
+
+- `is_private=true` 的其他会话
+- `status=deleted` 的会话
+- `status=archived` 的会话
+- 被 `is_isolated=true` 项目边界阻止的跨项目会话
+- 其他会话的完整原始消息
+
+## 项目接口
+
+### POST /api/projects
+
+创建项目。
+
+请求体：
 
 ```json
 {
-  "title": "Example News",
-  "url": "https://example.com/news",
-  "snippet": "Example snippet."
+  "name": "Demo Project",
+  "description": "optional",
+  "scope_mode": "project_only",
+  "is_isolated": true
 }
 ```
 
-字段含义：
+### GET /api/projects
 
-- `title`
-  来源标题
-- `url`
-  来源链接
-- `snippet`
-  来源摘要，可为空
+列出项目。
 
-## 错误响应示例
+查询参数：
 
-当前错误响应统一为：
+- `include_archived`，默认 `true`
+- `include_deleted`，默认 `false`
+
+### GET /api/projects/{project_id}
+
+查看单个项目。
+
+## 会话管理接口
+
+### POST /api/sessions
+
+创建会话。
+
+请求体：
 
 ```json
 {
-  "error": {
-    "code": "validation_error",
-    "message": "请求参数校验失败。"
-  }
+  "title": "Project session",
+  "project_id": 1,
+  "is_private": true
 }
 ```
 
-常见错误类型包括：
+### GET /api/sessions
 
-- `validation_error`
-  请求结构不合法，例如缺少 `message`
+列出会话。
 
-- `http_error`
-  路由层抛出的 HTTP 错误
+查询参数：
 
-- `internal_error`
-  服务端处理过程中出现未预期异常
+- `project_id`
+- `include_archived`，默认 `false`
+- `include_deleted`，默认 `false`
 
-### 422 示例
+### GET /api/sessions/{session_id}
+
+查看单个会话。
+
+### POST /api/sessions/{session_id}/archive
+
+归档会话，把 `status` 改成 `archived`。
+
+### DELETE /api/sessions/{session_id}
+
+软删除会话，把 `status` 改成 `deleted`。
+
+### POST /api/sessions/{session_id}/move
+
+把会话移入某个项目。
+
+请求体：
 
 ```json
 {
-  "error": {
-    "code": "validation_error",
-    "message": "请求参数校验失败。"
-  }
+  "project_id": 2
 }
 ```
 
-### 500 示例
+## 状态与枚举
 
-```json
-{
-  "error": {
-    "code": "http_error",
-    "message": "聊天服务暂时不可用，请稍后重试。"
-  }
-}
-```
+### Project.scope_mode
 
-## 使用建议
+- `conversation_only`
+- `project_only`
+- `project_plus_global`
+- `global`
 
-### 1. 首次请求
+### Project.status / ChatSession.status
 
-首次请求不要传 `session_id`，让后端自动创建。
+- `active`
+- `archived`
+- `deleted`
 
-示例：
+## 当前未实现
 
-```json
-{
-  "message": "你好，请记住我叫小王"
-}
-```
+当前仍未实现：
 
-### 2. 复用 session
-
-后续请求复用上一次返回的 `session_id`，否则后端会把它当作新会话。
-
-示例：
-
-```json
-{
-  "message": "我刚才告诉了你什么？",
-  "session_id": "8d4e5c7c5e954a5fa9f6d8f7567dc001"
-}
-```
-
-### 3. 实时问题触发搜索
-
-如果问题中包含实时性较强的表达，更容易触发搜索逻辑，例如：
-
-- 今天
-- 最新
-- 当前
-- 新闻
-- 价格
-- 最近
-- `today`
-- `latest`
-- `news`
-
-示例：
-
-```json
-{
-  "message": "today latest ai news",
-  "session_id": "8d4e5c7c5e954a5fa9f6d8f7567dc001"
-}
-```
-
-需要注意：
-
-- `search_triggered = true` 不代表一定拿到了结果
-- 如果当前网络不可用，可能会触发搜索但 `search_used = false`
-
-### 4. 如何判断这次回复是否可信到“实时信息”
-
-可以结合这几个字段一起看：
-
-- `used_live_model`
-- `search_triggered`
-- `search_used`
-- `sources`
-
-如果：
-
-- `used_live_model = true`
-- `search_used = true`
-- `sources` 非空
-
-说明这次返回更接近“真实模型 + 搜索增强”的路径。
-
-如果：
-
-- `used_live_model = false`
-
-说明本次走了降级回复，适合用来调试链路，不应把它当作正式实时回答。
+- allowlist
+- 向量库检索
+- 其他会话完整消息拼接
+- 更复杂的召回排序与打分

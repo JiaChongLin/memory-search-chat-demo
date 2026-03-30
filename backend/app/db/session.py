@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.core.config import get_settings
@@ -13,7 +13,6 @@ settings = get_settings()
 
 engine = create_engine(
     settings.database_url,
-    # SQLite 在本地单进程开发时通常需要关闭线程检查。
     connect_args={"check_same_thread": False}
     if settings.database_url.startswith("sqlite")
     else {},
@@ -22,7 +21,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_db() -> Generator[Session, None, None]:
-    # 供 FastAPI 依赖注入使用，请求结束后自动关闭会话。
     db = SessionLocal()
     try:
         yield db
@@ -31,5 +29,41 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    # demo 阶段使用 create_all 即可完成本地建表。
     Base.metadata.create_all(bind=engine)
+    _migrate_sqlite_schema()
+
+
+def _migrate_sqlite_schema() -> None:
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    inspector = inspect(engine)
+    if not inspector.has_table("chat_sessions"):
+        return
+
+    chat_session_columns = {
+        column["name"] for column in inspector.get_columns("chat_sessions")
+    }
+    migration_statements: list[str] = []
+
+    if "project_id" not in chat_session_columns:
+        migration_statements.append(
+            "ALTER TABLE chat_sessions ADD COLUMN project_id INTEGER"
+        )
+    if "status" not in chat_session_columns:
+        migration_statements.append(
+            "ALTER TABLE chat_sessions ADD COLUMN status VARCHAR(20) "
+            "NOT NULL DEFAULT 'active'"
+        )
+    if "is_private" not in chat_session_columns:
+        migration_statements.append(
+            "ALTER TABLE chat_sessions ADD COLUMN is_private BOOLEAN "
+            "NOT NULL DEFAULT 0"
+        )
+
+    if not migration_statements:
+        return
+
+    with engine.begin() as connection:
+        for statement in migration_statements:
+            connection.execute(text(statement))

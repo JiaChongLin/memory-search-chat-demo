@@ -34,3 +34,5 @@ class ChatResponse(BaseModel):
     search_triggered: bool = False
     search_used: bool = False
     sources: list[SearchSource] = Field(default_factory=list)
+    context_scope: Optional[str] = None
+    related_summary_count: int = 0

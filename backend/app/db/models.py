@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -15,11 +15,24 @@ class Base(DeclarativeBase):
     pass
 
 
-class ChatSession(Base):
-    __tablename__ = "chat_sessions"
+PROJECT_SCOPE_MODES = (
+    "conversation_only",
+    "project_only",
+    "project_plus_global",
+    "global",
+)
+RECORD_STATUSES = ("active", "archived", "deleted")
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scope_mode: Mapped[str] = mapped_column(String(32), default="conversation_only")
+    is_isolated: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,
@@ -30,7 +43,32 @@ class ChatSession(Base):
         onupdate=utcnow,
     )
 
-    # 一个会话下会关联多条消息，以及一条会话摘要。
+    sessions: Mapped[list["ChatSession"]] = relationship(back_populates="project")
+
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    project_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    is_private: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    project: Mapped[Optional["Project"]] = relationship(back_populates="sessions")
     messages: Mapped[list["ChatMessage"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
