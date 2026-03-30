@@ -1,12 +1,9 @@
-﻿import {
-  getAccessModeLabel,
-} from "./labels.js";
+import { getAccessModeLabel } from "./labels.js";
 import {
   archiveSession,
   createProject,
   createSession,
   deleteSession,
-  getProject,
   getSession,
   healthCheck,
   listProjects,
@@ -19,7 +16,6 @@ import { renderChat } from "./render-chat.js";
 import { renderManagement } from "./render-management.js";
 import {
   appendMessage,
-  clearCurrentSessionSelection,
   clearNotice,
   getState,
   setBackendBaseUrl,
@@ -27,52 +23,46 @@ import {
   setChatDebug,
   setCurrentProjectId,
   setCurrentSessionId,
-  setFilterSessionsByProject,
   setHealth,
+  setNewChatMenuOpen,
   setNotice,
+  setProjectModalOpen,
   setProjects,
   setSelectedProjectDetail,
   setSelectedSessionDetail,
   setSessions,
   setSummaryForSession,
   subscribe,
+  toggleProjectExpanded,
+  toggleProjectSessionExpansion,
+  toggleShowAllProjects,
+  toggleSidebarSection,
 } from "./state.js";
 
 const elements = {
   backendBaseUrl: document.querySelector("#backendBaseUrl"),
   saveConfigButton: document.querySelector("#saveConfigButton"),
   checkHealthButton: document.querySelector("#checkHealthButton"),
-  refreshProjectsButton: document.querySelector("#refreshProjectsButton"),
-  clearProjectButton: document.querySelector("#clearProjectButton"),
-  refreshSessionsButton: document.querySelector("#refreshSessionsButton"),
-  clearSessionButton: document.querySelector("#clearSessionButton"),
-  archiveSessionButton: document.querySelector("#archiveSessionButton"),
-  deleteSessionButton: document.querySelector("#deleteSessionButton"),
-  moveSessionButton: document.querySelector("#moveSessionButton"),
-  filterSessionsByProject: document.querySelector("#filterSessionsByProject"),
+  newChatButton: document.querySelector("#newChatButton"),
+  searchChatsButton: document.querySelector("#searchChatsButton"),
   projectForm: document.querySelector("#projectForm"),
-  sessionForm: document.querySelector("#sessionForm"),
   composerForm: document.querySelector("#composerForm"),
-  projectList: document.querySelector("#projectList"),
-  sessionList: document.querySelector("#sessionList"),
-  projectDetail: document.querySelector("#projectDetail"),
+  projectsSection: document.querySelector("#projectsSection"),
+  unassignedSection: document.querySelector("#unassignedSection"),
   sessionDetail: document.querySelector("#sessionDetail"),
-  sessionBanner: document.querySelector("#sessionBanner"),
   projectNotice: document.querySelector("#projectNotice"),
   sessionNotice: document.querySelector("#sessionNotice"),
+  sessionBanner: document.querySelector("#sessionBanner"),
   chatNotice: document.querySelector("#chatNotice"),
   globalNotice: document.querySelector("#globalNotice"),
   currentProjectLabel: document.querySelector("#currentProjectLabel"),
   currentSessionLabel: document.querySelector("#currentSessionLabel"),
   healthBadge: document.querySelector("#healthBadge"),
   environmentValue: document.querySelector("#environmentValue"),
+  projectModal: document.querySelector("#projectModal"),
   projectNameInput: document.querySelector("#projectNameInput"),
   projectDescriptionInput: document.querySelector("#projectDescriptionInput"),
   projectAccessSelect: document.querySelector("#projectAccessSelect"),
-  sessionTitleInput: document.querySelector("#sessionTitleInput"),
-  sessionProjectSelect: document.querySelector("#sessionProjectSelect"),
-  sessionPrivateInput: document.querySelector("#sessionPrivateInput"),
-  moveProjectSelect: document.querySelector("#moveProjectSelect"),
   messageInput: document.querySelector("#messageInput"),
   sendButton: document.querySelector("#sendButton"),
   composerHint: document.querySelector("#composerHint"),
@@ -84,6 +74,7 @@ const elements = {
   messageList: document.querySelector("#messageList"),
   chatEmptyState: document.querySelector("#chatEmptyState"),
   messageTemplate: document.querySelector("#messageTemplate"),
+  newChatMenu: document.querySelector("#newChatMenu"),
   quickChips: document.querySelectorAll(".quick-chip"),
 };
 
@@ -128,6 +119,19 @@ function canChatWithCurrentSelection() {
     return false;
   }
   return !["archived", "deleted"].includes(session.status);
+}
+
+function syncProjectSelection(projectId) {
+  const state = getState();
+  if (projectId === null || projectId === undefined) {
+    setCurrentProjectId(null);
+    setSelectedProjectDetail(null);
+    return;
+  }
+
+  const project = state.projects.find((item) => item.id === projectId) || null;
+  setCurrentProjectId(projectId);
+  setSelectedProjectDetail(project);
 }
 
 async function refreshHealth(silent = false) {
@@ -200,9 +204,7 @@ async function syncSelectedSessionDetail() {
     setSelectedSessionDetail(detail);
   } catch (error) {
     if (error.status === 404) {
-      if (!state.selectedSessionDetail || state.selectedSessionDetail.id !== state.currentSessionId) {
-        setSelectedSessionDetail(null);
-      }
+      setSelectedSessionDetail(null);
       return;
     }
     setNotice("sessions", `读取会话详情失败：${formatErrorMessage(error)}`, "warning");
@@ -212,13 +214,7 @@ async function syncSelectedSessionDetail() {
 async function refreshSessions(options = {}) {
   setBusy("sessions", true);
   try {
-    const state = getState();
-    const query = {};
-    if (state.filterSessionsByProject && state.currentProjectId !== null) {
-      query.project_id = state.currentProjectId;
-    }
-
-    const sessions = await listSessions(getBaseUrl(), query);
+    const sessions = await listSessions(getBaseUrl());
     setSessions(sessions);
     await syncSelectedSessionDetail();
 
@@ -249,11 +245,16 @@ async function handleProjectCreate(event) {
   try {
     setBusy("projects", true);
     const project = await createProject(getBaseUrl(), payload);
+    setProjectModalOpen(false);
     setCurrentProjectId(project.id);
     setSelectedProjectDetail(project);
     elements.projectForm.reset();
     elements.projectAccessSelect.value = "open";
-    setNotice("projects", `项目 ${project.name} 创建成功，访问模式：${getAccessModeLabel(project.access_mode)}。`, "success");
+    setNotice(
+      "projects",
+      `项目 ${project.name} 创建成功，访问模式：${getAccessModeLabel(project.access_mode)}。`,
+      "success",
+    );
     await refreshProjects({ silent: true });
     await refreshSessions({ silent: true });
   } catch (error) {
@@ -263,36 +264,37 @@ async function handleProjectCreate(event) {
   }
 }
 
-async function handleProjectSelect(projectId) {
-  try {
-    const detail = await getProject(getBaseUrl(), projectId);
-    setCurrentProjectId(detail.id);
-    setSelectedProjectDetail(detail);
-    clearNotice("projects");
-    await refreshSessions({ silent: true });
-  } catch (error) {
-    setNotice("projects", `读取项目失败：${formatErrorMessage(error)}`, "danger");
+function handleProjectSelect(projectId) {
+  const state = getState();
+  if (state.currentProjectId === projectId) {
+    setCurrentProjectId(null);
+    setSelectedProjectDetail(null);
+    setNewChatMenuOpen(false);
+    return;
   }
+
+  syncProjectSelection(projectId);
+  clearNotice("projects");
 }
 
-async function handleSessionCreate(event) {
-  event.preventDefault();
-
-  const projectId = parseOptionalProjectId(elements.sessionProjectSelect.value);
-  const payload = {
-    title: elements.sessionTitleInput.value.trim() || null,
-    project_id: projectId,
-    is_private: elements.sessionPrivateInput.checked,
-  };
-
+async function createBlankSession(projectId = null) {
   try {
     setBusy("sessions", true);
-    const session = await createSession(getBaseUrl(), payload);
+    const session = await createSession(getBaseUrl(), {
+      title: null,
+      project_id: projectId,
+      is_private: false,
+    });
     setCurrentSessionId(session.id);
     setSelectedSessionDetail(session);
     setSummaryForSession(session.id, null);
-    elements.sessionForm.reset();
-    setNotice("sessions", session.is_private ? "已创建私密会话。它不会被其他会话访问。" : "已创建共享会话。", "success");
+    syncProjectSelection(session.project_id);
+    setNewChatMenuOpen(false);
+    setNotice(
+      "sessions",
+      projectId === null ? "已创建未归属会话。" : "已在当前项目下创建新聊天。",
+      "success",
+    );
     await refreshSessions({ silent: true });
   } catch (error) {
     setNotice("sessions", `创建会话失败：${formatErrorMessage(error)}`, "danger");
@@ -301,15 +303,25 @@ async function handleSessionCreate(event) {
   }
 }
 
-async function handleSessionSelect(sessionId) {
+function handleNewChatClick() {
   const state = getState();
-  const session = state.sessions.find((item) => item.id === sessionId) || state.selectedSessionDetail;
-  setCurrentSessionId(sessionId);
-  if (session && session.id === sessionId) {
-    setSelectedSessionDetail(session);
+  if (state.selectedProjectDetail) {
+    setNewChatMenuOpen(!state.ui.newChatMenuOpen);
+    return;
   }
+  createBlankSession(null);
+}
+
+function handleSessionSelect(sessionId) {
+  const state = getState();
+  const session = state.sessions.find((item) => item.id === sessionId) || null;
+  setCurrentSessionId(sessionId);
+  setSelectedSessionDetail(session);
   clearNotice("chat");
-  await syncSelectedSessionDetail();
+  setNewChatMenuOpen(false);
+  if (session) {
+    syncProjectSelection(session.project_id);
+  }
 }
 
 async function handleArchiveSession(sessionId) {
@@ -341,8 +353,9 @@ async function handleMoveSession() {
     return;
   }
 
-  const rawValue = elements.moveProjectSelect.value;
-  if (rawValue === "") {
+  const moveSelect = document.querySelector("#moveProjectSelect");
+  const rawValue = moveSelect?.value || "";
+  if (!rawValue) {
     setNotice("sessions", "请选择目标项目或移出项目。", "warning");
     return;
   }
@@ -352,7 +365,14 @@ async function handleMoveSession() {
   try {
     const session = await moveSession(getBaseUrl(), state.currentSessionId, targetProjectId);
     setSelectedSessionDetail(session);
-    setNotice("sessions", targetProjectId === null ? "会话已移出项目，现在是无项目会话。" : "会话已移动到目标项目。", "success");
+    syncProjectSelection(session.project_id);
+    setNotice(
+      "sessions",
+      targetProjectId === null
+        ? "会话已移出项目，现在是未归属会话。"
+        : "会话已移动到目标项目。",
+      "success",
+    );
     await refreshSessions({ silent: true });
   } catch (error) {
     setNotice("sessions", `移动失败：${formatErrorMessage(error)}`, "danger");
@@ -369,7 +389,7 @@ async function handleChatSubmit(event) {
 
   const stateBeforeSend = getState();
   if (!stateBeforeSend.currentSessionId) {
-    setNotice("chat", "当前没有选中会话。请先在中间栏创建或选择一个会话。", "warning");
+    setNotice("chat", "当前没有选中会话。请先在左侧选择或创建会话。", "warning");
     return;
   }
 
@@ -414,7 +434,11 @@ async function handleChatSubmit(event) {
       debug: buildAssistantDebug(response),
     });
 
-    setNotice("chat", `已收到回复。后端返回的 context_scope 会继续保留字段名，但现在按“项目访问模式解析结果”理解：${getAccessModeLabel(response.context_scope)}。`, "success");
+    setNotice(
+      "chat",
+      `已收到回复。后端返回的 context_scope 会继续保留字段名，但现在按“项目访问模式解析结果”理解：${getAccessModeLabel(response.context_scope)}。`,
+      "success",
+    );
     await refreshSessions({ silent: true });
   } catch (error) {
     appendMessage(stateBeforeSend.currentSessionId, {
@@ -426,39 +450,6 @@ async function handleChatSubmit(event) {
     setNotice("chat", `聊天请求失败：${formatErrorMessage(error)}`, "danger");
   } finally {
     setBusy("chat", false);
-  }
-}
-
-function handleProjectListClick(event) {
-  const target = event.target.closest("[data-project-select]");
-  if (!target) {
-    return;
-  }
-
-  const projectId = Number.parseInt(target.dataset.projectSelect, 10);
-  if (Number.isNaN(projectId)) {
-    return;
-  }
-
-  handleProjectSelect(projectId);
-}
-
-function handleSessionListClick(event) {
-  const selectTarget = event.target.closest("[data-session-select]");
-  if (selectTarget) {
-    handleSessionSelect(selectTarget.dataset.sessionSelect);
-    return;
-  }
-
-  const archiveTarget = event.target.closest("[data-session-archive]");
-  if (archiveTarget) {
-    handleArchiveSession(archiveTarget.dataset.sessionArchive);
-    return;
-  }
-
-  const deleteTarget = event.target.closest("[data-session-delete]");
-  if (deleteTarget) {
-    handleDeleteSession(deleteTarget.dataset.sessionDelete);
   }
 }
 
@@ -479,47 +470,124 @@ function handleComposerKeydown(event) {
   }
 }
 
+function handleGlobalClick(event) {
+  const sectionToggle = event.target.closest("[data-section-toggle]");
+  if (sectionToggle) {
+    toggleSidebarSection(sectionToggle.dataset.sectionToggle);
+    return;
+  }
+
+  const projectMoreToggle = event.target.closest("[data-projects-more-toggle]");
+  if (projectMoreToggle) {
+    toggleShowAllProjects();
+    return;
+  }
+
+  const projectToggle = event.target.closest("[data-project-toggle]");
+  if (projectToggle) {
+    const projectId = Number.parseInt(projectToggle.dataset.projectToggle, 10);
+    if (!Number.isNaN(projectId)) {
+      toggleProjectExpanded(projectId);
+    }
+    return;
+  }
+
+  const projectSessionToggle = event.target.closest("[data-project-sessions-toggle]");
+  if (projectSessionToggle) {
+    const projectId = Number.parseInt(projectSessionToggle.dataset.projectSessionsToggle, 10);
+    if (!Number.isNaN(projectId)) {
+      toggleProjectSessionExpansion(projectId);
+    }
+    return;
+  }
+
+  const projectSelect = event.target.closest("[data-project-select]");
+  if (projectSelect) {
+    const projectId = Number.parseInt(projectSelect.dataset.projectSelect, 10);
+    if (!Number.isNaN(projectId)) {
+      handleProjectSelect(projectId);
+    }
+    return;
+  }
+
+  const sessionSelect = event.target.closest("[data-session-select]");
+  if (sessionSelect) {
+    handleSessionSelect(sessionSelect.dataset.sessionSelect);
+    return;
+  }
+
+  const archiveButton = event.target.closest("#archiveSessionButton");
+  if (archiveButton) {
+    const state = getState();
+    if (state.currentSessionId) {
+      handleArchiveSession(state.currentSessionId);
+    }
+    return;
+  }
+
+  const deleteButton = event.target.closest("#deleteSessionButton");
+  if (deleteButton) {
+    const state = getState();
+    if (state.currentSessionId) {
+      handleDeleteSession(state.currentSessionId);
+    }
+    return;
+  }
+
+  const moveButton = event.target.closest("#moveSessionButton");
+  if (moveButton) {
+    handleMoveSession();
+    return;
+  }
+
+  if (event.target.closest("#openProjectModalButton")) {
+    setProjectModalOpen(true);
+    setNewChatMenuOpen(false);
+    return;
+  }
+
+  if (
+    event.target.closest("#closeProjectModalButton") ||
+    event.target.closest("[data-close-project-modal]")
+  ) {
+    setProjectModalOpen(false);
+    return;
+  }
+
+  if (event.target.closest("#createChatInProjectButton")) {
+    const projectId = getState().currentProjectId;
+    createBlankSession(projectId);
+    return;
+  }
+
+  if (event.target.closest("#createUnassignedChatButton")) {
+    createBlankSession(null);
+    return;
+  }
+
+  if (
+    !event.target.closest("#newChatButton") &&
+    !event.target.closest("#newChatMenu")
+  ) {
+    setNewChatMenuOpen(false);
+  }
+}
+
 function wireEvents() {
   elements.saveConfigButton.addEventListener("click", () => {
     setBackendBaseUrl(normalizeBaseUrl(elements.backendBaseUrl.value));
     refreshHealth();
   });
   elements.checkHealthButton.addEventListener("click", () => refreshHealth());
-  elements.refreshProjectsButton.addEventListener("click", () => refreshProjects());
-  elements.refreshSessionsButton.addEventListener("click", () => refreshSessions());
-  elements.clearProjectButton.addEventListener("click", async () => {
-    setCurrentProjectId(null);
-    setSelectedProjectDetail(null);
-    await refreshSessions({ silent: true });
-  });
-  elements.clearSessionButton.addEventListener("click", () => {
-    clearCurrentSessionSelection();
-    setNotice("chat", "已清除当前会话选择。右侧聊天区会保持禁用，直到你重新选择或创建一个会话。", "info");
+  elements.newChatButton.addEventListener("click", handleNewChatClick);
+  elements.searchChatsButton.addEventListener("click", () => {
+    setNotice("global", "搜索聊天入口已预留，后续再接真实搜索能力。", "info");
   });
   elements.projectForm.addEventListener("submit", handleProjectCreate);
-  elements.sessionForm.addEventListener("submit", handleSessionCreate);
   elements.composerForm.addEventListener("submit", handleChatSubmit);
-  elements.projectList.addEventListener("click", handleProjectListClick);
-  elements.sessionList.addEventListener("click", handleSessionListClick);
-  elements.archiveSessionButton.addEventListener("click", () => {
-    const state = getState();
-    if (state.currentSessionId) {
-      handleArchiveSession(state.currentSessionId);
-    }
-  });
-  elements.deleteSessionButton.addEventListener("click", () => {
-    const state = getState();
-    if (state.currentSessionId) {
-      handleDeleteSession(state.currentSessionId);
-    }
-  });
-  elements.moveSessionButton.addEventListener("click", handleMoveSession);
-  elements.filterSessionsByProject.addEventListener("change", async (event) => {
-    setFilterSessionsByProject(event.target.checked);
-    await refreshSessions({ silent: true });
-  });
   elements.messageInput.addEventListener("keydown", handleComposerKeydown);
   elements.quickChips.forEach((chip) => chip.addEventListener("click", handleQuickChipClick));
+  document.addEventListener("click", handleGlobalClick);
 }
 
 function renderAll(state) {
