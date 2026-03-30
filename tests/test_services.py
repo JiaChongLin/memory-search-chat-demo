@@ -117,3 +117,49 @@ def test_duckduckgo_parser_extracts_titles_urls_and_snippets() -> None:
             snippet="Another summary.",
         ),
     ]
+
+
+def test_project_service_can_create_project_against_legacy_projects_table() -> None:
+    temp_dir = Path("tests/.tmp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    db_path = temp_dir / f"legacy_project_service_test_{uuid4().hex}.db"
+
+    engine = create_engine(
+        f"sqlite:///{db_path.as_posix()}",
+        connect_args={"check_same_thread": False},
+    )
+    session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                scope_mode VARCHAR(32) NOT NULL,
+                is_isolated BOOLEAN NOT NULL,
+                status VARCHAR(20) NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                access_mode VARCHAR(32) NOT NULL DEFAULT 'open'
+            )
+            """
+        )
+
+    try:
+        from backend.app.schemas.projects import ProjectCreateRequest
+        from backend.app.services.project_service import ProjectService
+
+        with session_local() as db:
+            project = ProjectService(db).create_project(
+                ProjectCreateRequest(name="legacy-compatible", access_mode="open")
+            )
+
+            assert project.id is not None
+            assert project.name == "legacy-compatible"
+            assert project.access_mode == "open"
+    finally:
+        engine.dispose()
+        if db_path.exists():
+            db_path.unlink()
