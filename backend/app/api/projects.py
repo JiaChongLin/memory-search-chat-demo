@@ -1,13 +1,12 @@
 ﻿from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from backend.app.db.models import Project
 from backend.app.db.session import get_db
 from backend.app.schemas.chat import ErrorResponse
 from backend.app.schemas.projects import ProjectCreateRequest, ProjectResponse
+from backend.app.services.project_service import ProjectService
 
 
 router = APIRouter()
@@ -24,10 +23,7 @@ def create_project(
     payload: ProjectCreateRequest,
     db: Session = Depends(get_db),
 ) -> ProjectResponse:
-    project = Project(**payload.model_dump())
-    db.add(project)
-    db.commit()
-    db.refresh(project)
+    project = ProjectService(db).create_project(payload)
     return ProjectResponse.model_validate(project)
 
 
@@ -41,13 +37,11 @@ def list_projects(
     include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> list[ProjectResponse]:
-    stmt = select(Project).order_by(Project.updated_at.desc(), Project.id.desc())
-    if not include_archived:
-        stmt = stmt.where(Project.status != "archived")
-    if not include_deleted:
-        stmt = stmt.where(Project.status != "deleted")
-
-    return [ProjectResponse.model_validate(project) for project in db.scalars(stmt)]
+    projects = ProjectService(db).list_projects(
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+    )
+    return [ProjectResponse.model_validate(project) for project in projects]
 
 
 @router.get(
@@ -60,10 +54,5 @@ def get_project(
     project_id: int,
     db: Session = Depends(get_db),
 ) -> ProjectResponse:
-    project = db.get(Project, project_id)
-    if project is None or project.status == "deleted":
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found.",
-        )
+    project = ProjectService(db).get_project(project_id)
     return ProjectResponse.model_validate(project)

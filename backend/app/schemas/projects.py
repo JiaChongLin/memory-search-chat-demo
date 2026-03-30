@@ -1,24 +1,17 @@
 ﻿from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
-ProjectScopeMode = Literal[
-    "conversation_only",
-    "project_only",
-    "project_plus_global",
-    "global",
-]
-ProjectStatus = Literal["active", "archived", "deleted"]
+from backend.app.domain.constants import ProjectScopeMode, RecordStatus, SCOPE_MODE_CONVERSATION_ONLY
 
 
 class ProjectCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(default=None, max_length=4000)
-    scope_mode: ProjectScopeMode = "conversation_only"
+    scope_mode: ProjectScopeMode = SCOPE_MODE_CONVERSATION_ONLY
     is_isolated: bool = False
 
 
@@ -30,6 +23,6 @@ class ProjectResponse(BaseModel):
     description: Optional[str] = None
     scope_mode: ProjectScopeMode
     is_isolated: bool
-    status: ProjectStatus
+    status: RecordStatus
     created_at: datetime
     updated_at: datetime

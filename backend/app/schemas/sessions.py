@@ -1,12 +1,11 @@
 ﻿from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
-SessionStatus = Literal["active", "archived", "deleted"]
+from backend.app.domain.constants import RecordStatus
 
 
 class SessionCreateRequest(BaseModel):
@@ -25,7 +24,7 @@ class SessionResponse(BaseModel):
     id: str
     title: Optional[str] = None
     project_id: Optional[int] = None
-    status: SessionStatus
+    status: RecordStatus
     is_private: bool
     created_at: datetime
     updated_at: datetime

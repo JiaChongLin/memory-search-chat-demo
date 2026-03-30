@@ -19,9 +19,13 @@ API Router
          |
          v
 ChatService
+  |------> ContextResolver
   |------> MemoryService
   |------> SearchService
   `------> LLMService
+
+Projects Router ------> ProjectService
+Sessions Router ------> SessionService
          |
          v
 SQLite
@@ -31,17 +35,22 @@ SQLite
 
 ### Frontend
 
-前端仍然是轻量 demo 页面，负责：
+前端是一个纯静态 Web 测试控制台，负责：
 
-- 发送聊天请求
-- 维护当前 `session_id`
-- 展示回复、摘要、搜索来源
-
-当前还没有项目管理 UI，也没有可视化权限调试页。
+- 管理项目和会话
+- 选择当前项目 / 当前会话
+- 发起聊天请求
+- 展示回复、摘要、搜索来源和调试字段
 
 ### API Router
 
-API 层当前分成三类路由：
+API 层继续保持轻量，主要负责：
+
+- 解析请求参数
+- 调用对应 service
+- 返回 schema response
+
+当前路由分成三类：
 
 - `chat.py`
   聊天入口
@@ -52,31 +61,48 @@ API 层当前分成三类路由：
 
 ### ChatService
 
-`ChatService` 仍保持轻量编排，只负责：
+`ChatService` 仍然保持轻量编排，只负责：
 
 - 确定 `session_id`
-- 调用 `MemoryService.resolve_context()` 获取可访问上下文
+- 调用 `ContextResolver` 获取可访问上下文
 - 调用搜索服务
 - 调用模型服务
-- 保存本轮消息和摘要
+- 调用 `MemoryService.append_turn()` 写回消息和摘要
 - 返回轻量调试信息
 
-权限判断主逻辑没有塞进 `ChatService`，而是集中在 `MemoryService`。
+权限判断和上下文拼装不再堆在 `ChatService` 内部。
 
 ### MemoryService
 
-`MemoryService` 现在承担两类职责：
+`MemoryService` 现在只负责会话记忆读写：
 
-- 记忆读写
-  - 当前会话最近消息
-  - 当前会话摘要
-  - 追加消息并更新摘要
-- 上下文解析
-  - 按项目 `scope_mode` 确定默认边界
-  - 按会话 `is_private` 进一步收紧
-  - 按项目 `is_isolated` 阻止跨边界读取
-  - 过滤 deleted / archived / private 的外部候选会话
-  - 把其他会话以摘要形式注入上下文
+- 当前会话最近消息读取
+- 当前会话摘要读取
+- 追加消息并更新摘要
+- `ChatMessage` / `SessionSummary` 直接持久化逻辑
+
+### ContextResolver
+
+`ContextResolver` 负责聊天上下文解析：
+
+- 按项目 `scope_mode` 计算默认边界
+- 按会话 `is_private` 进一步收紧
+- 按项目 `is_isolated` 阻止跨边界读取
+- 过滤 deleted / archived / private 的外部候选会话
+- 把其他会话以摘要形式组装进上下文
+
+这层拆出来后，后续继续加 allowlist、调试接口和召回排序会更自然。
+
+### ProjectService / SessionService
+
+这两个 service 负责项目与会话管理的核心操作：
+
+- `ProjectService`
+  创建 / 列表 / 单查项目
+- `SessionService`
+  创建 / 列表 / 单查 / 归档 / 软删除 / 移动会话
+
+router 里不再直接堆 DB 查询和状态变更逻辑。
 
 ## 数据模型关系
 
@@ -175,7 +201,7 @@ Project 1 --- N ChatSession 1 --- N ChatMessage
 
 - 当前会话最近消息
 - 当前会话摘要
-- `MemoryService` 解析出的相关会话摘要
+- `ContextResolver` 解析出的相关会话摘要
 - 搜索结果（若触发搜索）
 
 ## 当前不会进入模型上下文的数据
@@ -191,4 +217,4 @@ Project 1 --- N ChatSession 1 --- N ChatMessage
 - 为了保持 demo 简洁，跨会话只拼摘要，不做向量检索
 - archived 会话暂不纳入上下文，避免语义复杂化
 - allowlist 尚未实现，只保留未来扩展空间
-- 对外部候选摘要的排序目前保持轻量，优先同项目，再补全局可访问摘要
+- 外部候选摘要目前保持轻量排序，优先同项目，再补全全局可访问摘要

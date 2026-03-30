@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.db.models import Base, ChatSession, Project, SessionSummary
+from backend.app.services.context_resolver import ContextResolver
 from backend.app.services.memory_service import MemoryService
 
 
@@ -57,6 +58,11 @@ def _create_session(
     return session
 
 
+def _resolve_context(db, session_id: str):
+    memory_service = MemoryService(db=db, short_window=2)
+    return ContextResolver(db=db, memory_service=memory_service).resolve_context(session_id)
+
+
 def test_private_session_is_not_readable_from_same_project() -> None:
     engine, session_local, db_path = _build_db_session()
     try:
@@ -78,7 +84,7 @@ def test_private_session_is_not_readable_from_same_project() -> None:
             )
             db.commit()
 
-            context = MemoryService(db=db, short_window=2).resolve_context("current")
+            context = _resolve_context(db, "current")
             related_ids = {item.session_id for item in context.related_summaries}
 
             assert context.context_scope == "project_only"
@@ -120,7 +126,7 @@ def test_isolated_project_content_is_hidden_from_external_global_session() -> No
             )
             db.commit()
 
-            context = MemoryService(db=db, short_window=2).resolve_context("global-current")
+            context = _resolve_context(db, "global-current")
             related_ids = {item.session_id for item in context.related_summaries}
 
             assert context.context_scope == "global"
@@ -144,7 +150,7 @@ def test_project_only_reads_only_project_visible_history() -> None:
             _create_session(db, "no-project", summary="no-project-summary")
             db.commit()
 
-            context = MemoryService(db=db, short_window=2).resolve_context("current")
+            context = _resolve_context(db, "current")
             related_ids = {item.session_id for item in context.related_summaries}
 
             assert context.context_scope == "project_only"
@@ -200,7 +206,7 @@ def test_global_reads_only_allowed_history() -> None:
             )
             db.commit()
 
-            context = MemoryService(db=db, short_window=2).resolve_context("current")
+            context = _resolve_context(db, "current")
             related_ids = {item.session_id for item in context.related_summaries}
 
             assert context.context_scope == "global"
@@ -226,7 +232,7 @@ def test_deleted_session_never_enters_context() -> None:
             )
             db.commit()
 
-            context = MemoryService(db=db, short_window=2).resolve_context("current")
+            context = _resolve_context(db, "current")
             related_ids = {item.session_id for item in context.related_summaries}
 
             assert "deleted-one" not in related_ids

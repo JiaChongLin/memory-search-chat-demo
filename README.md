@@ -6,9 +6,10 @@
 
 - 已有 `POST /api/chat` 聊天接口
 - 已有 SQLite 持久化的 `ChatSession` / `ChatMessage` / `SessionSummary` / `Project`
-- 已有会话摘要记忆与搜索触发逻辑
 - 已有项目与会话管理 API
 - 已把项目层 `scope_mode`、`is_isolated` 和会话层 `is_private` / `status` 接入聊天上下文解析
+- 前端已改造成可直接测试项目 / 会话 / 权限规则的纯静态 Web 控制台
+- 后端 service 已做轻量拆分，便于继续加 allowlist、召回排序和调试接口
 
 ## 当前阶段说明
 
@@ -16,13 +17,39 @@
 
 - 阶段 1：项目层 + 会话层权限的数据模型与管理 API
 - 阶段 2：两层权限规则接入聊天上下文解析
+- 阶段 3：前端改造成可测试项目/会话/权限规则的 Web 控制台
+- 后端轻量优化：拆分上下文解析与项目/会话管理 service
 
 当前仍未完成：
 
 - allowlist
 - 向量库检索
 - 更复杂的跨会话召回排序
-- 项目管理前端 UI
+
+## 后端结构
+
+当前后端的职责分布是：
+
+- `ChatService`
+  负责串联上下文解析、搜索、模型调用和写回
+- `MemoryService`
+  负责最近消息、summary 和消息持久化
+- `ContextResolver`
+  负责项目层 + 会话层边界下的上下文解析
+- `ProjectService` / `SessionService`
+  负责项目与会话管理 API 的核心操作
+
+## Web 控制台可以做什么
+
+前端页面现在可以直接测试：
+
+- 创建项目并观察 `scope_mode` / `is_isolated`
+- 创建会话、切换会话、归档、软删除、移动项目
+- 创建 private 会话并观察它在权限规则里的影响
+- 针对当前选中会话聊天
+- 观察 `context_scope` 和 `related_summary_count`
+- 观察 `used_live_model`、`fallback_reason`、`search_triggered`、`search_used`
+- 查看搜索来源 `sources`
 
 ## 当前聊天上下文规则
 
@@ -41,45 +68,45 @@
 - archived 会话
 - 被 isolated 项目边界挡住的跨项目摘要
 
-## 权限规则摘要
+## 快速运行
 
-- 项目层决定默认边界
-- 会话层只能收紧，不能放宽
-- `conversation_only`：只读当前会话
-- `project_only`：读当前会话 + 同项目可访问摘要
-- `project_plus_global`：在项目内基础上补全局可访问摘要
-- `global`：读所有允许访问的摘要
-- `global` 也不会绕过 `private`、`deleted`、`archived`、`is_isolated`
+### 1. 启动后端
 
-## API 概览
+```bash
+uvicorn backend.app.main:app --reload
+```
 
-### 聊天接口
+### 2. 启动前端静态文件服务
 
-- `POST /api/chat`
+```bash
+cd frontend
+python -m http.server 5500
+```
 
-聊天响应当前包含两个轻量调试字段：
+然后访问：
 
-- `context_scope`
-- `related_summary_count`
+```text
+http://127.0.0.1:5500
+```
 
-### 项目管理接口
+### 3. 在页面里测试
 
-- `POST /api/projects`
-- `GET /api/projects`
-- `GET /api/projects/{project_id}`
+建议按这个顺序：
 
-### 会话管理接口
+1. 右上角先检查后端连接
+2. 左侧创建项目，选择不同 `scope_mode`
+3. 中间创建会话，必要时勾选 `is_private`
+4. 先显式选中一个会话，再到右侧发送消息
+5. 在右侧观察 `context_scope`、`related_summary_count`、搜索状态和模型降级状态
 
-- `POST /api/sessions`
-- `GET /api/sessions`
-- `GET /api/sessions/{session_id}`
-- `POST /api/sessions/{session_id}/archive`
-- `DELETE /api/sessions/{session_id}`
-- `POST /api/sessions/{session_id}/move`
+说明：
+
+- 当前未选中会话时，聊天区会禁止直接发送消息
+- 当前会话若已 `archived` 或 `deleted`，聊天区也会明确禁用并提示原因
 
 ## 测试
 
-运行当前最小测试集：
+运行当前后端最小测试集：
 
 ```bash
 pytest tests/test_context_rules.py tests/test_management_api.py tests/test_chat_api.py tests/test_services.py -q
