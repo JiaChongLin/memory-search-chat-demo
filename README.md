@@ -7,8 +7,8 @@
 - 已有 `POST /api/chat` 聊天接口
 - 已有 SQLite 持久化的 `ChatSession` / `ChatMessage` / `SessionSummary` / `Project`
 - 已有项目与会话管理 API
-- 已把项目层 `scope_mode`、`is_isolated` 和会话层 `is_private` / `status` 接入聊天上下文解析
-- 前端已改造成可直接测试项目 / 会话 / 权限规则的纯静态 Web 控制台
+- 已把项目层 `access_mode` 和会话层 `is_private` / `status` 接入聊天上下文解析
+- 前端已改造成可直接测试项目 / 会话 / 访问规则的纯静态 Web 控制台
 - 后端 service 已做轻量拆分，便于继续加 allowlist、召回排序和调试接口
 
 ## 当前阶段说明
@@ -17,8 +17,9 @@
 
 - 阶段 1：项目层 + 会话层权限的数据模型与管理 API
 - 阶段 2：两层权限规则接入聊天上下文解析
-- 阶段 3：前端改造成可测试项目/会话/权限规则的 Web 控制台
-- 后端轻量优化：拆分上下文解析与项目/会话管理 service
+- 阶段 3：前端改造成可测试项目 / 会话 / 权限规则的 Web 控制台
+- 后端轻量优化：拆分上下文解析与项目 / 会话管理 service
+- 权限模型重写：改为 `Project.access_mode` + `ChatSession.is_private`
 
 当前仍未完成：
 
@@ -26,30 +27,33 @@
 - 向量库检索
 - 更复杂的跨会话召回排序
 
-## 后端结构
+当前版本仍以应用后端服务为主。
+后续如果进入 agent 化阶段，计划新增独立 `tools/` 层作为扩展，用薄包装方式复用现有 service，而不影响当前 service 结构。
 
-当前后端的职责分布是：
+## 新的权限模型
 
-- `ChatService`
-  负责串联上下文解析、搜索、模型调用和写回
-- `MemoryService`
-  负责最近消息、summary 和消息持久化
-- `ContextResolver`
-  负责项目层 + 会话层边界下的上下文解析
-- `ProjectService` / `SessionService`
-  负责项目与会话管理 API 的核心操作
+### 项目层
 
-## Web 控制台可以做什么
+项目只控制跨项目边界：
 
-前端页面现在可以直接测试：
+- `open`
+  项目内会话可以访问外部可访问历史，项目内非 private 会话也可以被项目外访问
+- `project_only`
+  项目内会话只能访问本项目内历史，项目内会话内容对项目外不可见
 
-- 创建项目并观察 `scope_mode` / `is_isolated`
-- 创建会话、切换会话、归档、软删除、移动项目
-- 创建 private 会话并观察它在权限规则里的影响
-- 针对当前选中会话聊天
-- 观察 `context_scope` 和 `related_summary_count`
-- 观察 `used_live_model`、`fallback_reason`、`search_triggered`、`search_used`
-- 查看搜索来源 `sources`
+### 会话层
+
+会话仍保留 `is_private`，但语义改为：
+
+- `false`
+  shared，会话可以被其他允许访问的会话读取
+- `true`
+  private，会话不能被其他会话读取
+
+关键点：
+
+- private 只影响“别人能不能读我”
+- private 不影响“我能不能读别人”
 
 ## 当前聊天上下文规则
 
@@ -57,16 +61,29 @@
 
 - 当前会话最近消息
 - 当前会话摘要
-- 按权限规则筛出的其他会话摘要
+- 按新规则筛出的其他会话摘要
 - 搜索结果（若触发）
 
-当前不会进入模型上下文的数据：
+聊天时不会进入模型上下文的数据：
 
 - 其他会话完整原始消息
 - private 会话摘要
-- deleted 会话
 - archived 会话
-- 被 isolated 项目边界挡住的跨项目摘要
+- deleted 会话
+
+`context_scope` 调试字段当前只反映两种语义：
+
+- `open`
+- `project_only`
+
+前端调试区会继续显示 `context_scope` 字段名，但现在按“访问模式解析结果”来理解，而不是旧版四档 scope 语义。
+
+## 本地 SQLite 说明
+
+如果你的本地 SQLite 文件来自旧版 `scope_mode / is_isolated` 语义，当前代码会尽量补充 `access_mode` 字段并做一次轻量映射。
+
+但这类旧数据的语义无法完全无损迁移。
+如果你希望严格按新产品规则验证行为，建议删除旧的本地 SQLite 文件后重新初始化。
 
 ## 快速运行
 
@@ -94,15 +111,17 @@ http://127.0.0.1:5500
 建议按这个顺序：
 
 1. 右上角先检查后端连接
-2. 左侧创建项目，选择不同 `scope_mode`
-3. 中间创建会话，必要时勾选 `is_private`
+2. 左侧创建项目，选择“项目访问模式”：`开放项目（open）` 或 `仅限项目（project_only）`
+3. 中间创建会话，按需要选择“共享 / 私密”可见性
 4. 先显式选中一个会话，再到右侧发送消息
-5. 在右侧观察 `context_scope`、`related_summary_count`、搜索状态和模型降级状态
+5. 在右侧观察“当前项目访问模式”“当前会话可见性”“context_scope（按新语义解释为访问模式解析结果）”“related_summary_count”、搜索状态和模型降级状态
 
 说明：
 
 - 当前未选中会话时，聊天区会禁止直接发送消息
 - 当前会话若已 `archived` 或 `deleted`，聊天区也会明确禁用并提示原因
+- 私密会话不会被其他会话访问，但它自己仍然可以访问其他允许访问的历史
+- 无项目且非私密的会话，属于开放可访问历史的一部分，不会自动退化成只读自己
 
 ## 测试
 

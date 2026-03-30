@@ -1,4 +1,7 @@
 ﻿import {
+  getAccessModeLabel,
+} from "./labels.js";
+import {
   archiveSession,
   createProject,
   createSession,
@@ -65,8 +68,7 @@ const elements = {
   environmentValue: document.querySelector("#environmentValue"),
   projectNameInput: document.querySelector("#projectNameInput"),
   projectDescriptionInput: document.querySelector("#projectDescriptionInput"),
-  projectScopeSelect: document.querySelector("#projectScopeSelect"),
-  projectIsolatedInput: document.querySelector("#projectIsolatedInput"),
+  projectAccessSelect: document.querySelector("#projectAccessSelect"),
   sessionTitleInput: document.querySelector("#sessionTitleInput"),
   sessionProjectSelect: document.querySelector("#sessionProjectSelect"),
   sessionPrivateInput: document.querySelector("#sessionPrivateInput"),
@@ -77,6 +79,7 @@ const elements = {
   summaryBadge: document.querySelector("#summaryBadge"),
   summaryText: document.querySelector("#summaryText"),
   debugInfo: document.querySelector("#debugInfo"),
+  debugNote: document.querySelector("#debugNote"),
   selectionHint: document.querySelector("#selectionHint"),
   messageList: document.querySelector("#messageList"),
   chatEmptyState: document.querySelector("#chatEmptyState"),
@@ -93,6 +96,9 @@ function formatErrorMessage(error) {
 
 function parseOptionalProjectId(value) {
   if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  if (value === "__none__") {
     return null;
   }
   const parsed = Number.parseInt(value, 10);
@@ -232,8 +238,7 @@ async function handleProjectCreate(event) {
   const payload = {
     name: elements.projectNameInput.value.trim(),
     description: elements.projectDescriptionInput.value.trim() || null,
-    scope_mode: elements.projectScopeSelect.value,
-    is_isolated: elements.projectIsolatedInput.checked,
+    access_mode: elements.projectAccessSelect.value,
   };
 
   if (!payload.name) {
@@ -247,8 +252,8 @@ async function handleProjectCreate(event) {
     setCurrentProjectId(project.id);
     setSelectedProjectDetail(project);
     elements.projectForm.reset();
-    elements.projectScopeSelect.value = "conversation_only";
-    setNotice("projects", `项目 ${project.name} 创建成功。`, "success");
+    elements.projectAccessSelect.value = "open";
+    setNotice("projects", `项目 ${project.name} 创建成功，访问模式：${getAccessModeLabel(project.access_mode)}。`, "success");
     await refreshProjects({ silent: true });
     await refreshSessions({ silent: true });
   } catch (error) {
@@ -287,7 +292,7 @@ async function handleSessionCreate(event) {
     setSelectedSessionDetail(session);
     setSummaryForSession(session.id, null);
     elements.sessionForm.reset();
-    setNotice("sessions", "已创建空白会话。", "success");
+    setNotice("sessions", session.is_private ? "已创建私密会话。它不会被其他会话访问。" : "已创建共享会话。", "success");
     await refreshSessions({ silent: true });
   } catch (error) {
     setNotice("sessions", `创建会话失败：${formatErrorMessage(error)}`, "danger");
@@ -336,16 +341,18 @@ async function handleMoveSession() {
     return;
   }
 
-  const targetProjectId = parseOptionalProjectId(elements.moveProjectSelect.value);
-  if (targetProjectId === null) {
-    setNotice("sessions", "请选择目标项目。", "warning");
+  const rawValue = elements.moveProjectSelect.value;
+  if (rawValue === "") {
+    setNotice("sessions", "请选择目标项目或移出项目。", "warning");
     return;
   }
+
+  const targetProjectId = parseOptionalProjectId(rawValue);
 
   try {
     const session = await moveSession(getBaseUrl(), state.currentSessionId, targetProjectId);
     setSelectedSessionDetail(session);
-    setNotice("sessions", "会话已移动到目标项目。", "success");
+    setNotice("sessions", targetProjectId === null ? "会话已移出项目，现在是无项目会话。" : "会话已移动到目标项目。", "success");
     await refreshSessions({ silent: true });
   } catch (error) {
     setNotice("sessions", `移动失败：${formatErrorMessage(error)}`, "danger");
@@ -407,7 +414,7 @@ async function handleChatSubmit(event) {
       debug: buildAssistantDebug(response),
     });
 
-    setNotice("chat", `已收到回复，context_scope=${response.context_scope || "-"}。`, "success");
+    setNotice("chat", `已收到回复。后端返回的 context_scope 会继续保留字段名，但现在按“项目访问模式解析结果”理解：${getAccessModeLabel(response.context_scope)}。`, "success");
     await refreshSessions({ silent: true });
   } catch (error) {
     appendMessage(stateBeforeSend.currentSessionId, {

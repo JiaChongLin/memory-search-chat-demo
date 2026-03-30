@@ -106,7 +106,7 @@ def test_chat_first_request_returns_session_and_reply(client: TestClient) -> Non
     assert data["fallback_reason"] == "missing_api_key"
     assert data["search_used"] is False
     assert isinstance(data["sources"], list)
-    assert data["context_scope"] == "conversation_only"
+    assert data["context_scope"] == "open"
     assert data["related_summary_count"] == 0
 
 
@@ -126,7 +126,7 @@ def test_chat_reuses_existing_session(client: TestClient) -> None:
     second_data = second_response.json()
     assert second_data["session_id"] == first_data["session_id"]
     assert second_data["reply"]
-    assert second_data["context_scope"] == "conversation_only"
+    assert second_data["context_scope"] == "open"
     assert second_data["related_summary_count"] == 0
 
 
@@ -155,4 +155,4 @@ def test_chat_returns_search_sources_when_search_hits(
     assert data["search_triggered"] is True
     assert data["search_used"] is True
     assert data["sources"][0]["title"] == "Example News"
-    assert data["context_scope"] == "conversation_only"
+    assert data["context_scope"] == "open"

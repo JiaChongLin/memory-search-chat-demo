@@ -13,7 +13,7 @@
           <p class="eyebrow">Stage 3</p>
           <h1>Memory Search Web Console</h1>
           <p class="lead">
-            纯静态测试控制台，用来直接观察项目、会话、权限边界、聊天上下文和搜索/降级状态。
+            纯静态测试控制台，用来直接观察项目、会话、访问边界、聊天上下文和搜索/降级状态。
           </p>
         </div>
 
@@ -23,7 +23,7 @@
             <span id="healthBadge" class="badge neutral">未检测</span>
           </div>
 
-          <label class="field-label" for="backendBaseUrl">Backend Base URL</label>
+          <label class="field-label" for="backendBaseUrl">后端地址</label>
           <div class="inline-row">
             <input
               id="backendBaseUrl"
@@ -85,18 +85,13 @@
             <label class="field-label" for="projectDescriptionInput">描述</label>
             <textarea id="projectDescriptionInput" class="text-area" rows="3" maxlength="4000"></textarea>
 
-            <label class="field-label" for="projectScopeSelect">scope_mode</label>
-            <select id="projectScopeSelect" class="select-input">
-              <option value="conversation_only">conversation_only</option>
-              <option value="project_only">project_only</option>
-              <option value="project_plus_global">project_plus_global</option>
-              <option value="global">global</option>
+            <label class="field-label" for="projectAccessSelect">项目访问模式</label>
+            <select id="projectAccessSelect" class="select-input">
+              <option value="open">开放项目（open）</option>
+              <option value="project_only">仅限项目（project_only）</option>
             </select>
-
-            <label class="checkbox-row">
-              <input id="projectIsolatedInput" type="checkbox" />
-              <span>is_isolated = true</span>
-            </label>
+            <p class="hint-text">开放项目：可访问外部可访问历史，且自身非私密会话也可被外部访问。</p>
+            <p class="hint-text">仅限项目：只能访问项目内历史，且项目内会话对项目外不可见。</p>
 
             <button class="primary-button" type="submit">创建项目</button>
           </form>
@@ -117,7 +112,7 @@
 
             <label class="checkbox-row inline-space">
               <input id="filterSessionsByProject" type="checkbox" checked />
-              <span>按当前项目过滤会话</span>
+              <span>只看当前项目的会话</span>
             </label>
 
             <div id="sessionNotice" class="notice hidden"></div>
@@ -139,8 +134,10 @@
 
             <label class="checkbox-row">
               <input id="sessionPrivateInput" type="checkbox" />
-              <span>is_private = true</span>
+              <span>设为私密会话</span>
             </label>
+            <p class="hint-text">默认共享：可被其他允许访问的会话读取。</p>
+            <p class="hint-text">私密会话：不会被其他会话访问，但自己仍然可以访问其他允许访问的历史。</p>
 
             <button class="primary-button" type="submit">创建空白会话</button>
           </form>
@@ -170,7 +167,7 @@
                 <p class="eyebrow">Chat</p>
                 <h2>聊天与调试</h2>
               </div>
-              <div id="selectionHint" class="selection-hint">可直接对当前选中会话发消息；未选中会话时会自动创建一个新 session。</div>
+              <div id="selectionHint" class="selection-hint">请先选中一个会话，再在这里发送消息。</div>
             </div>
 
             <div id="chatNotice" class="notice hidden"></div>
@@ -187,9 +184,10 @@
               <section class="detail-card debug-card-box">
                 <div class="mini-head">
                   <h3>最近调试信息</h3>
-                  <span class="badge soft">chat response</span>
+                  <span class="badge soft">聊天返回</span>
                 </div>
                 <dl id="debugInfo" class="debug-grid"></dl>
+                <p id="debugNote" class="hint-text">这里会用新模型语言解释 `context_scope`、项目访问模式和会话可见性。</p>
               </section>
             </div>
 
@@ -199,8 +197,8 @@
               </div>
               <div class="quick-list">
                 <button class="quick-chip" data-prompt="你好，请介绍一下你当前可访问的上下文。" type="button">查看上下文</button>
-                <button class="quick-chip" data-prompt="请记住：我在项目 A 里讨论权限规则。" type="button">写入记忆</button>
-                <button class="quick-chip" data-prompt="现在你能读到多少相关历史？" type="button">观察 related_summary_count</button>
+                <button class="quick-chip" data-prompt="请记住：我在项目 A 里讨论新的访问规则。" type="button">写入记忆</button>
+                <button class="quick-chip" data-prompt="现在你能读到多少相关历史？" type="button">观察相关摘要数</button>
                 <button class="quick-chip" data-prompt="today latest ai news" type="button">触发搜索</button>
               </div>
             </section>
@@ -215,7 +213,7 @@
                 class="text-area composer-input"
                 rows="5"
                 maxlength="4000"
-                placeholder="输入消息，观察 context_scope / related_summary_count / 搜索状态 / 模型降级状态。"
+                placeholder="输入消息，观察当前项目访问模式、会话可见性、相关摘要数、搜索状态和模型降级状态。"
               ></textarea>
               <div class="inline-row composer-actions">
                 <span id="composerHint" class="hint-text">Shift + Enter 换行，Enter 发送。</span>

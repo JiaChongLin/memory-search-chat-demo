@@ -8,15 +8,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from backend.app.db.models import ChatSession
 from backend.app.domain.constants import (
-    PROJECT_SCOPE_MODES,
-    RELATED_SUMMARY_SOURCE_GLOBAL,
+    PROJECT_ACCESS_OPEN,
+    PROJECT_ACCESS_PROJECT_ONLY,
+    RELATED_SUMMARY_SOURCE_EXTERNAL,
     RELATED_SUMMARY_SOURCE_PROJECT,
+    ProjectAccessMode,
     RelatedSummarySourceScope,
-    ProjectScopeMode,
-    SCOPE_MODE_CONVERSATION_ONLY,
-    SCOPE_MODE_GLOBAL,
-    SCOPE_MODE_PROJECT_ONLY,
-    SCOPE_MODE_PROJECT_PLUS_GLOBAL,
     STATUS_ACTIVE,
     STATUS_DELETED,
 )
@@ -38,34 +35,27 @@ class RelatedSummary:
 class ResolvedContext:
     recent_messages: list[MemoryMessage]
     context_summary: Optional[str]
-    context_scope: ProjectScopeMode
+    context_scope: ProjectAccessMode
     related_summaries: list[RelatedSummary]
 
 
 class ContextResolver:
-    """Resolve readable chat context under project and session boundaries."""
+    """Resolve readable chat context under the new project/session access model."""
 
     def __init__(self, db: Session, memory_service: MemoryService) -> None:
         self._db = db
         self._memory_service = memory_service
 
     def resolve_context(self, session_id: str) -> ResolvedContext:
-        current_session = self._get_readable_session(session_id)
-        recent_messages = self._memory_service.get_recent_messages(session_id) if current_session else []
-        current_summary = self._memory_service.get_summary(session_id) if current_session else None
+        current_session = self._get_current_session(session_id)
+        recent_messages = self._memory_service.get_recent_messages(session_id)
+        current_summary = self._memory_service.get_summary(session_id)
 
         if current_session is None:
-            return ResolvedContext(
-                recent_messages=recent_messages,
-                context_summary=current_summary,
-                context_scope=SCOPE_MODE_CONVERSATION_ONLY,
-                related_summaries=[],
-            )
+            current_session = ChatSession(id=session_id, status=STATUS_ACTIVE, is_private=False)
 
         context_scope = self._resolve_context_scope(current_session)
-        related_summaries: list[RelatedSummary] = []
-        if context_scope != SCOPE_MODE_CONVERSATION_ONLY:
-            related_summaries = self.get_accessible_summaries(current_session, context_scope)
+        related_summaries = self.get_accessible_summaries(current_session)
 
         return ResolvedContext(
             recent_messages=recent_messages,
@@ -77,11 +67,7 @@ class ContextResolver:
             related_summaries=related_summaries,
         )
 
-    def get_accessible_summaries(
-        self,
-        current_session: ChatSession,
-        context_scope: ProjectScopeMode,
-    ) -> list[RelatedSummary]:
+    def get_accessible_summaries(self, current_session: ChatSession) -> list[RelatedSummary]:
         stmt = (
             select(ChatSession)
             .options(
@@ -94,7 +80,8 @@ class ContextResolver:
         candidates = list(self._db.scalars(stmt).unique())
 
         same_project_items: list[RelatedSummary] = []
-        global_items: list[RelatedSummary] = []
+        external_items: list[RelatedSummary] = []
+        can_read_external = self._can_read_external(current_session)
 
         for candidate in candidates:
             if not self._is_summary_candidate(candidate):
@@ -102,24 +89,18 @@ class ContextResolver:
 
             if self._is_same_project(current_session, candidate):
                 same_project_items.append(
-                    self._to_related_summary(candidate, source_scope=RELATED_SUMMARY_SOURCE_PROJECT)
+                    self._to_related_summary(candidate, RELATED_SUMMARY_SOURCE_PROJECT)
                 )
                 continue
 
-            if context_scope in {SCOPE_MODE_PROJECT_PLUS_GLOBAL, SCOPE_MODE_GLOBAL} and self._can_read_across_boundary(
-                current_session,
-                candidate,
-            ):
-                global_items.append(
-                    self._to_related_summary(candidate, source_scope=RELATED_SUMMARY_SOURCE_GLOBAL)
+            if can_read_external and self._is_externally_visible(candidate):
+                external_items.append(
+                    self._to_related_summary(candidate, RELATED_SUMMARY_SOURCE_EXTERNAL)
                 )
 
-        if context_scope == SCOPE_MODE_PROJECT_ONLY:
-            return same_project_items[:MAX_RELATED_SUMMARIES]
+        return (same_project_items + external_items)[:MAX_RELATED_SUMMARIES]
 
-        return (same_project_items + global_items)[:MAX_RELATED_SUMMARIES]
-
-    def _get_readable_session(self, session_id: str) -> Optional[ChatSession]:
+    def _get_current_session(self, session_id: str) -> Optional[ChatSession]:
         stmt = (
             select(ChatSession)
             .options(
@@ -133,18 +114,16 @@ class ContextResolver:
             return None
         return session
 
-    def _resolve_context_scope(self, current_session: ChatSession) -> ProjectScopeMode:
-        if current_session.is_private:
-            return SCOPE_MODE_CONVERSATION_ONLY
-
+    def _resolve_context_scope(self, current_session: ChatSession) -> ProjectAccessMode:
         project = current_session.project
         if project is None or project.status == STATUS_DELETED:
-            return SCOPE_MODE_CONVERSATION_ONLY
+            return PROJECT_ACCESS_OPEN
+        if project.access_mode == PROJECT_ACCESS_PROJECT_ONLY:
+            return PROJECT_ACCESS_PROJECT_ONLY
+        return PROJECT_ACCESS_OPEN
 
-        if project.scope_mode not in PROJECT_SCOPE_MODES:
-            return SCOPE_MODE_CONVERSATION_ONLY
-
-        return project.scope_mode
+    def _can_read_external(self, current_session: ChatSession) -> bool:
+        return self._resolve_context_scope(current_session) == PROJECT_ACCESS_OPEN
 
     def _is_summary_candidate(self, candidate: ChatSession) -> bool:
         if candidate.status != STATUS_ACTIVE:
@@ -157,30 +136,18 @@ class ContextResolver:
             return False
         return True
 
-    def _is_same_project(
-        self,
-        current_session: ChatSession,
-        candidate: ChatSession,
-    ) -> bool:
+    def _is_same_project(self, current_session: ChatSession, candidate: ChatSession) -> bool:
         return (
             current_session.project_id is not None
             and candidate.project_id is not None
             and current_session.project_id == candidate.project_id
         )
 
-    def _can_read_across_boundary(
-        self,
-        current_session: ChatSession,
-        candidate: ChatSession,
-    ) -> bool:
-        current_project = current_session.project
+    def _is_externally_visible(self, candidate: ChatSession) -> bool:
         candidate_project = candidate.project
-
-        if current_project is not None and current_project.is_isolated:
-            return False
-        if candidate_project is not None and candidate_project.is_isolated:
-            return False
-        return True
+        if candidate_project is None:
+            return True
+        return candidate_project.access_mode == PROJECT_ACCESS_OPEN
 
     def _to_related_summary(
         self,
@@ -207,7 +174,7 @@ class ContextResolver:
         if related_summaries:
             lines = ["可访问的相关历史摘要："]
             for index, item in enumerate(related_summaries, start=1):
-                source_label = "同项目" if item.source_scope == RELATED_SUMMARY_SOURCE_PROJECT else "全局可访问"
+                source_label = "同项目" if item.source_scope == RELATED_SUMMARY_SOURCE_PROJECT else "外部可访问"
                 lines.append(f"{index}. {source_label}会话 {item.session_id[:8]}：{item.content}")
             parts.append("\n".join(lines))
 

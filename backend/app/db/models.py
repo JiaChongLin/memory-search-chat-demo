@@ -7,9 +7,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from backend.app.domain.constants import (
-    PROJECT_SCOPE_MODES,
-    RECORD_STATUSES,
-    SCOPE_MODE_CONVERSATION_ONLY,
+    PROJECT_ACCESS_OPEN,
     STATUS_ACTIVE,
 )
 
@@ -28,8 +26,7 @@ class Project(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    scope_mode: Mapped[str] = mapped_column(String(32), default=SCOPE_MODE_CONVERSATION_ONLY)
-    is_isolated: Mapped[bool] = mapped_column(Boolean, default=False)
+    access_mode: Mapped[str] = mapped_column(String(32), default=PROJECT_ACCESS_OPEN)
     status: Mapped[str] = mapped_column(String(20), default=STATUS_ACTIVE, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

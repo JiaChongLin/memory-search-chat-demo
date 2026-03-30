@@ -7,6 +7,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.core.config import get_settings
 from backend.app.db.models import Base
+from backend.app.domain.constants import (
+    PROJECT_ACCESS_OPEN,
+    PROJECT_ACCESS_PROJECT_ONLY,
+)
 
 
 settings = get_settings()
@@ -38,32 +42,85 @@ def _migrate_sqlite_schema() -> None:
         return
 
     inspector = inspect(engine)
-    if not inspector.has_table("chat_sessions"):
-        return
-
-    chat_session_columns = {
-        column["name"] for column in inspector.get_columns("chat_sessions")
-    }
     migration_statements: list[str] = []
 
-    if "project_id" not in chat_session_columns:
-        migration_statements.append(
-            "ALTER TABLE chat_sessions ADD COLUMN project_id INTEGER"
-        )
-    if "status" not in chat_session_columns:
-        migration_statements.append(
-            "ALTER TABLE chat_sessions ADD COLUMN status VARCHAR(20) "
-            "NOT NULL DEFAULT 'active'"
-        )
-    if "is_private" not in chat_session_columns:
-        migration_statements.append(
-            "ALTER TABLE chat_sessions ADD COLUMN is_private BOOLEAN "
-            "NOT NULL DEFAULT 0"
-        )
+    if inspector.has_table("projects"):
+        project_columns = {column["name"] for column in inspector.get_columns("projects")}
+        if "access_mode" not in project_columns:
+            migration_statements.append(
+                "ALTER TABLE projects ADD COLUMN access_mode VARCHAR(32) "
+                f"NOT NULL DEFAULT '{PROJECT_ACCESS_OPEN}'"
+            )
+
+    if inspector.has_table("chat_sessions"):
+        chat_session_columns = {
+            column["name"] for column in inspector.get_columns("chat_sessions")
+        }
+        if "project_id" not in chat_session_columns:
+            migration_statements.append(
+                "ALTER TABLE chat_sessions ADD COLUMN project_id INTEGER"
+            )
+        if "status" not in chat_session_columns:
+            migration_statements.append(
+                "ALTER TABLE chat_sessions ADD COLUMN status VARCHAR(20) "
+                "NOT NULL DEFAULT 'active'"
+            )
+        if "is_private" not in chat_session_columns:
+            migration_statements.append(
+                "ALTER TABLE chat_sessions ADD COLUMN is_private BOOLEAN "
+                "NOT NULL DEFAULT 0"
+            )
 
     if not migration_statements:
+        _backfill_project_access_mode(inspector)
         return
 
     with engine.begin() as connection:
         for statement in migration_statements:
             connection.execute(text(statement))
+
+    _backfill_project_access_mode(inspect(engine))
+
+
+def _backfill_project_access_mode(inspector) -> None:
+    if not inspector.has_table("projects"):
+        return
+
+    project_columns = {column["name"] for column in inspector.get_columns("projects")}
+    if "access_mode" not in project_columns:
+        return
+
+    has_scope_mode = "scope_mode" in project_columns
+    has_is_isolated = "is_isolated" in project_columns
+
+    statements = [
+        text(
+            "UPDATE projects SET access_mode = :open_mode "
+            "WHERE access_mode IS NULL OR TRIM(access_mode) = ''"
+        )
+    ]
+
+    if has_scope_mode or has_is_isolated:
+        conditions: list[str] = []
+        if has_scope_mode:
+            conditions.append("scope_mode = 'project_only'")
+        if has_is_isolated:
+            conditions.append("is_isolated = 1")
+
+        if conditions:
+            statements.append(
+                text(
+                    "UPDATE projects SET access_mode = :project_only_mode "
+                    f"WHERE {' OR '.join(conditions)}"
+                )
+            )
+
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(
+                statement,
+                {
+                    "open_mode": PROJECT_ACCESS_OPEN,
+                    "project_only_mode": PROJECT_ACCESS_PROJECT_ONLY,
+                },
+            )

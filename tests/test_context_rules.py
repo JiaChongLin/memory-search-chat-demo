@@ -23,11 +23,10 @@ def _build_db_session():
     return engine, session_local, db_path
 
 
-def _create_project(db, name, scope_mode, is_isolated=False, status="active"):
+def _create_project(db, name, access_mode="open", status="active"):
     project = Project(
         name=name,
-        scope_mode=scope_mode,
-        is_isolated=is_isolated,
+        access_mode=access_mode,
         status=status,
     )
     db.add(project)
@@ -63,32 +62,21 @@ def _resolve_context(db, session_id: str):
     return ContextResolver(db=db, memory_service=memory_service).resolve_context(session_id)
 
 
-def test_private_session_is_not_readable_from_same_project() -> None:
+def test_private_session_cannot_be_read_by_others() -> None:
     engine, session_local, db_path = _build_db_session()
     try:
         with session_local() as db:
-            project = _create_project(db, "project-a", "project_only")
+            project = _create_project(db, "project-a", "open")
             _create_session(db, "current", project_id=project.id, summary="current-summary")
-            _create_session(
-                db,
-                "private-one",
-                project_id=project.id,
-                is_private=True,
-                summary="private-summary",
-            )
-            _create_session(
-                db,
-                "public-one",
-                project_id=project.id,
-                summary="public-summary",
-            )
+            _create_session(db, "private-one", project_id=project.id, is_private=True, summary="private-summary")
+            _create_session(db, "shared-one", project_id=project.id, summary="shared-summary")
             db.commit()
 
             context = _resolve_context(db, "current")
             related_ids = {item.session_id for item in context.related_summaries}
 
-            assert context.context_scope == "project_only"
-            assert "public-one" in related_ids
+            assert context.context_scope == "open"
+            assert "shared-one" in related_ids
             assert "private-one" not in related_ids
     finally:
         engine.dispose()
@@ -96,57 +84,38 @@ def test_private_session_is_not_readable_from_same_project() -> None:
             db_path.unlink()
 
 
-def test_isolated_project_content_is_hidden_from_external_global_session() -> None:
+def test_private_session_still_reads_other_allowed_history() -> None:
     engine, session_local, db_path = _build_db_session()
     try:
         with session_local() as db:
-            isolated_project = _create_project(
-                db,
-                "isolated",
-                "project_only",
-                is_isolated=True,
-            )
-            global_project = _create_project(db, "global", "global")
-            _create_session(
-                db,
-                "inside-isolated",
-                project_id=isolated_project.id,
-                summary="isolated-summary",
-            )
-            _create_session(
-                db,
-                "global-current",
-                project_id=global_project.id,
-                summary="global-current-summary",
-            )
-            _create_session(
-                db,
-                "public-external",
-                summary="public-external-summary",
-            )
+            open_project = _create_project(db, "open-project", "open")
+            other_open_project = _create_project(db, "other-open", "open")
+            _create_session(db, "current-private", project_id=open_project.id, is_private=True, summary="mine")
+            _create_session(db, "same-project", project_id=open_project.id, summary="same-project-summary")
+            _create_session(db, "other-project", project_id=other_open_project.id, summary="other-project-summary")
+            _create_session(db, "no-project", summary="no-project-summary")
             db.commit()
 
-            context = _resolve_context(db, "global-current")
+            context = _resolve_context(db, "current-private")
             related_ids = {item.session_id for item in context.related_summaries}
 
-            assert context.context_scope == "global"
-            assert "public-external" in related_ids
-            assert "inside-isolated" not in related_ids
+            assert context.context_scope == "open"
+            assert related_ids == {"same-project", "other-project", "no-project"}
     finally:
         engine.dispose()
         if db_path.exists():
             db_path.unlink()
 
 
-def test_project_only_reads_only_project_visible_history() -> None:
+def test_project_only_session_cannot_read_external_history() -> None:
     engine, session_local, db_path = _build_db_session()
     try:
         with session_local() as db:
-            project_one = _create_project(db, "project-one", "project_only")
-            project_two = _create_project(db, "project-two", "project_only")
-            _create_session(db, "current", project_id=project_one.id, summary="current-summary")
-            _create_session(db, "same-project", project_id=project_one.id, summary="same-project-summary")
-            _create_session(db, "other-project", project_id=project_two.id, summary="other-project-summary")
+            project_only_project = _create_project(db, "project-only", "project_only")
+            open_project = _create_project(db, "open-project", "open")
+            _create_session(db, "current", project_id=project_only_project.id, summary="current-summary")
+            _create_session(db, "same-project", project_id=project_only_project.id, summary="same-project-summary")
+            _create_session(db, "other-project", project_id=open_project.id, summary="other-project-summary")
             _create_session(db, "no-project", summary="no-project-summary")
             db.commit()
 
@@ -161,82 +130,112 @@ def test_project_only_reads_only_project_visible_history() -> None:
             db_path.unlink()
 
 
-def test_global_reads_only_allowed_history() -> None:
+def test_open_project_session_can_read_external_open_and_shared_history() -> None:
     engine, session_local, db_path = _build_db_session()
     try:
         with session_local() as db:
-            current_project = _create_project(db, "current-project", "global")
-            other_project = _create_project(db, "other-project", "project_only")
-            isolated_project = _create_project(
-                db,
-                "isolated-project",
-                "project_only",
-                is_isolated=True,
-            )
-
-            _create_session(db, "current", project_id=current_project.id, summary="current-summary")
-            _create_session(db, "visible-project", project_id=other_project.id, summary="visible-project-summary")
-            _create_session(db, "visible-global", summary="visible-global-summary")
-            _create_session(
-                db,
-                "private-session",
-                project_id=other_project.id,
-                is_private=True,
-                summary="private-summary",
-            )
-            _create_session(
-                db,
-                "deleted-session",
-                project_id=other_project.id,
-                status="deleted",
-                summary="deleted-summary",
-            )
-            _create_session(
-                db,
-                "archived-session",
-                project_id=other_project.id,
-                status="archived",
-                summary="archived-summary",
-            )
-            _create_session(
-                db,
-                "isolated-session",
-                project_id=isolated_project.id,
-                summary="isolated-summary",
-            )
+            open_project = _create_project(db, "open-project", "open")
+            project_only_project = _create_project(db, "project-only", "project_only")
+            other_open_project = _create_project(db, "other-open", "open")
+            _create_session(db, "current", project_id=open_project.id, summary="current-summary")
+            _create_session(db, "same-project", project_id=open_project.id, summary="same-project-summary")
+            _create_session(db, "other-open", project_id=other_open_project.id, summary="other-open-summary")
+            _create_session(db, "other-project-only", project_id=project_only_project.id, summary="locked-summary")
+            _create_session(db, "no-project-shared", summary="no-project-summary")
             db.commit()
 
             context = _resolve_context(db, "current")
             related_ids = {item.session_id for item in context.related_summaries}
 
-            assert context.context_scope == "global"
-            assert related_ids == {"visible-project", "visible-global"}
+            assert context.context_scope == "open"
+            assert related_ids == {"same-project", "other-open", "no-project-shared"}
     finally:
         engine.dispose()
         if db_path.exists():
             db_path.unlink()
 
 
-def test_deleted_session_never_enters_context() -> None:
+def test_project_only_session_is_not_visible_from_outside_project() -> None:
     engine, session_local, db_path = _build_db_session()
     try:
         with session_local() as db:
-            project = _create_project(db, "global-project", "global")
-            _create_session(db, "current", project_id=project.id, summary="current-summary")
-            _create_session(
-                db,
-                "deleted-one",
-                project_id=project.id,
-                status="deleted",
-                summary="deleted-summary",
-            )
+            open_project = _create_project(db, "open-project", "open")
+            locked_project = _create_project(db, "locked-project", "project_only")
+            _create_session(db, "current", project_id=open_project.id, summary="current-summary")
+            _create_session(db, "inside-locked", project_id=locked_project.id, summary="locked-summary")
+            _create_session(db, "shared-open", project_id=open_project.id, summary="open-summary")
             db.commit()
 
             context = _resolve_context(db, "current")
             related_ids = {item.session_id for item in context.related_summaries}
 
+            assert "shared-open" in related_ids
+            assert "inside-locked" not in related_ids
+    finally:
+        engine.dispose()
+        if db_path.exists():
+            db_path.unlink()
+
+
+def test_no_project_shared_session_is_readable_from_open_context() -> None:
+    engine, session_local, db_path = _build_db_session()
+    try:
+        with session_local() as db:
+            open_project = _create_project(db, "open-project", "open")
+            _create_session(db, "current", project_id=open_project.id, summary="current-summary")
+            _create_session(db, "no-project-shared", summary="shared-summary")
+            db.commit()
+
+            context = _resolve_context(db, "current")
+            related_ids = {item.session_id for item in context.related_summaries}
+
+            assert "no-project-shared" in related_ids
+    finally:
+        engine.dispose()
+        if db_path.exists():
+            db_path.unlink()
+
+
+def test_no_project_private_session_is_not_readable_from_other_sessions() -> None:
+    engine, session_local, db_path = _build_db_session()
+    try:
+        with session_local() as db:
+            _create_session(db, "current", summary="current-summary")
+            _create_session(db, "no-project-private", is_private=True, summary="private-summary")
+            _create_session(db, "no-project-shared", summary="shared-summary")
+            db.commit()
+
+            context = _resolve_context(db, "current")
+            related_ids = {item.session_id for item in context.related_summaries}
+
+            assert "no-project-shared" in related_ids
+            assert "no-project-private" not in related_ids
+    finally:
+        engine.dispose()
+        if db_path.exists():
+            db_path.unlink()
+
+
+def test_archived_and_deleted_sessions_do_not_enter_external_context() -> None:
+    engine, session_local, db_path = _build_db_session()
+    try:
+        with session_local() as db:
+            open_project = _create_project(db, "open-project", "open")
+            _create_session(db, "current", project_id=open_project.id, summary="current-summary")
+            _create_session(db, "active-one", project_id=open_project.id, summary="active-summary")
+            _create_session(db, "archived-one", project_id=open_project.id, status="archived", summary="archived-summary")
+            _create_session(db, "deleted-one", project_id=open_project.id, status="deleted", summary="deleted-summary")
+            db.commit()
+
+            context = _resolve_context(db, "current")
+            related_ids = {item.session_id for item in context.related_summaries}
+            context_text = context.context_summary or ""
+
+            assert "active-one" in related_ids
+            assert "archived-one" not in related_ids
             assert "deleted-one" not in related_ids
-            assert "deleted-summary" not in (context.context_summary or "")
+            assert "archived-summary" not in context_text
+            assert "deleted-summary" not in context_text
     finally:
         engine.dispose()
         if db_path.exists():

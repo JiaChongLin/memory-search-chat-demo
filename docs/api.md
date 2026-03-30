@@ -5,7 +5,7 @@
 - 聊天接口
 - 项目 / 会话管理接口
 
-本阶段的重点是：聊天接口已经接入项目层 + 会话层的上下文访问规则。
+本阶段的重点是：聊天接口已经接入新的项目层 + 会话层访问规则。
 
 ## 基础接口
 
@@ -40,7 +40,7 @@
 说明：
 
 - `session_id` 不传时会自动创建新会话 ID
-- 当前会话自己的最近消息仍然优先进入上下文
+- 当前会话自己的最近消息和摘要始终优先进入上下文
 - 其他会话当前只以摘要形式参与上下文
 - allowlist 仍未实现
 
@@ -56,58 +56,45 @@
   "search_triggered": false,
   "search_used": false,
   "sources": [],
-  "context_scope": "conversation_only",
+  "context_scope": "open",
   "related_summary_count": 0
 }
 ```
 
-新增调试字段：
+调试字段：
 
 - `context_scope`
-  当前会话实际使用的上下文边界
+  当前会话实际使用的访问模式，当前只有：`open` / `project_only`
 - `related_summary_count`
   本次注入到上下文中的其他会话摘要数量
 
 ### 聊天上下文规则
 
-#### conversation_only
+#### 当前会话自己的读取权
 
-只读当前会话最近消息和当前会话摘要。
+- 当前会话始终保留自己的 recent messages 和 summary
+- `is_private=true` 不会让当前会话自动退化成只读自己
 
-#### project_only
+#### 其他候选会话的可读条件
 
-读取：
+以下会话不会进入外部上下文：
 
-- 当前会话最近消息
-- 当前会话摘要
-- 同项目下可访问的其他会话摘要
+- `is_private=true`
+- `status=archived`
+- `status=deleted`
+- 没有 summary 的会话
 
-#### project_plus_global
+#### 项目层边界
 
-读取：
+- `access_mode=open`
+  当前会话可以读取外部可访问历史，项目内 shared 会话也能被项目外读取
+- `access_mode=project_only`
+  当前会话只能读取本项目历史，项目内会话对项目外不可见
 
-- 当前会话最近消息
-- 当前会话摘要
-- 同项目可访问摘要
-- 项目外可访问摘要
+#### 无项目会话
 
-#### global
-
-读取：
-
-- 当前会话最近消息
-- 当前会话摘要
-- 所有允许访问的其他会话摘要
-
-### 聊天上下文过滤条件
-
-以下内容当前不会进入上下文：
-
-- `is_private=true` 的其他会话
-- `status=deleted` 的会话
-- `status=archived` 的会话
-- 被 `is_isolated=true` 项目边界阻止的跨项目会话
-- 其他会话的完整原始消息
+- 无项目且 shared 的会话，属于开放可访问历史的一部分
+- 无项目且 private 的会话，不可被其他会话读取
 
 ## 项目接口
 
@@ -121,8 +108,7 @@
 {
   "name": "Demo Project",
   "description": "optional",
-  "scope_mode": "project_only",
-  "is_isolated": true
+  "access_mode": "project_only"
 }
 ```
 
@@ -155,6 +141,11 @@
 }
 ```
 
+说明：
+
+- `project_id` 可为空，表示无项目会话
+- `is_private=true` 代表该会话不能被其他会话读取
+
 ### GET /api/sessions
 
 列出会话。
@@ -179,7 +170,7 @@
 
 ### POST /api/sessions/{session_id}/move
 
-把会话移入某个项目。
+把会话移入某个项目，或从项目中移出。
 
 请求体：
 
@@ -189,14 +180,25 @@
 }
 ```
 
+移出项目时：
+
+```json
+{
+  "project_id": null
+}
+```
+
 ## 状态与枚举
 
-### Project.scope_mode
+### Project.access_mode
 
-- `conversation_only`
+- `open`
 - `project_only`
-- `project_plus_global`
-- `global`
+
+### ChatSession.is_private
+
+- `false` 表示 shared
+- `true` 表示 private
 
 ### Project.status / ChatSession.status
 
