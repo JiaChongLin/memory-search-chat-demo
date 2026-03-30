@@ -31,7 +31,10 @@ class ChatService:
 
     def handle_chat(self, payload: ChatRequest) -> ChatResponse:
         session_id = payload.session_id or self._create_session_id()
-        resolved_context = self._context_resolver.resolve_context(session_id)
+        resolved_context = self._context_resolver.resolve_context(
+            session_id,
+            allow_missing=payload.session_id is None,
+        )
 
         search_triggered = self._search_service.should_search(payload.message)
         search_results = (

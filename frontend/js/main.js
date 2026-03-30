@@ -1,8 +1,9 @@
-import { getAccessModeLabel } from "./labels.js";
+﻿import { getAccessModeLabel } from "./labels.js";
 import {
   archiveSession,
   createProject,
   createSession,
+  deleteProject,
   deleteSession,
   getSession,
   healthCheck,
@@ -121,7 +122,7 @@ function canChatWithCurrentSelection() {
   if (!session) {
     return false;
   }
-  return !["archived", "deleted"].includes(session.status);
+  return session.status !== "archived";
 }
 
 function syncProjectSelection(projectId) {
@@ -135,6 +136,11 @@ function syncProjectSelection(projectId) {
   const project = state.projects.find((item) => item.id === projectId) || null;
   setCurrentProjectId(projectId);
   setSelectedProjectDetail(project);
+}
+
+function clearSessionSelection() {
+  setCurrentSessionId(null);
+  setSelectedSessionDetail(null);
 }
 
 async function refreshHealth(silent = false) {
@@ -207,7 +213,7 @@ async function syncSelectedSessionDetail() {
     setSelectedSessionDetail(detail);
   } catch (error) {
     if (error.status === 404) {
-      setSelectedSessionDetail(null);
+      clearSessionSelection();
       return;
     }
     setNotice("sessions", `同步会话详情失败：${formatErrorMessage(error)}`, "warning");
@@ -280,6 +286,30 @@ function handleProjectSelect(projectId) {
   clearNotice("projects");
 }
 
+async function handleProjectDelete(projectId) {
+  const state = getState();
+  const selectedSession = state.selectedSessionDetail;
+  const deletingCurrentProject = state.currentProjectId === projectId;
+  const deletingCurrentSession = selectedSession?.project_id === projectId;
+
+  try {
+    const response = await deleteProject(getBaseUrl(), projectId);
+    if (deletingCurrentProject) {
+      setCurrentProjectId(null);
+      setSelectedProjectDetail(null);
+      setNewChatMenuOpen(false);
+    }
+    if (deletingCurrentSession) {
+      clearSessionSelection();
+    }
+    setNotice("projects", response.message || "项目已删除。", "warning");
+    await refreshProjects({ silent: true });
+    await refreshSessions({ silent: true });
+  } catch (error) {
+    setNotice("projects", `删除项目失败：${formatErrorMessage(error)}`, "danger");
+  }
+}
+
 async function createBlankSession(projectId = null) {
   try {
     setBusy("sessions", true);
@@ -339,10 +369,15 @@ async function handleArchiveSession(sessionId) {
 }
 
 async function handleDeleteSession(sessionId) {
+  const deletingCurrentSession = getState().currentSessionId === sessionId;
+
   try {
-    const session = await deleteSession(getBaseUrl(), sessionId);
-    setSelectedSessionDetail(session);
-    setNotice("sessions", `会话 ${sessionId.slice(0, 10)} 已软删除。`, "warning");
+    const response = await deleteSession(getBaseUrl(), sessionId);
+    if (deletingCurrentSession) {
+      clearSessionSelection();
+    }
+    setNotice("sessions", response.message || "会话已删除。", "warning");
+    clearNotice("chat");
     await refreshSessions({ silent: true });
   } catch (error) {
     setNotice("sessions", `删除失败：${formatErrorMessage(error)}`, "danger");
@@ -371,7 +406,7 @@ async function handleMoveSession() {
     syncProjectSelection(session.project_id);
     setNotice(
       "sessions",
-      targetProjectId === null ? "会话已移出项目。": "会话已移动到目标项目。",
+      targetProjectId === null ? "会话已移出项目。" : "会话已移动到目标项目。",
       "success",
     );
     await refreshSessions({ silent: true });
@@ -395,7 +430,7 @@ async function handleChatSubmit(event) {
   }
 
   if (!canChatWithCurrentSelection()) {
-    setNotice("chat", "当前会话已归档或已删除，请切换到其他会话。", "warning");
+    setNotice("chat", "当前会话已归档，请切换到其他会话。", "warning");
     return;
   }
 
@@ -504,6 +539,15 @@ function handleGlobalClick(event) {
     const projectId = Number.parseInt(projectSessionToggle.dataset.projectSessionsToggle, 10);
     if (!Number.isNaN(projectId)) {
       toggleProjectSessionExpansion(projectId);
+    }
+    return;
+  }
+
+  const projectDelete = event.target.closest("[data-project-delete]");
+  if (projectDelete) {
+    const projectId = Number.parseInt(projectDelete.dataset.projectDelete, 10);
+    if (!Number.isNaN(projectId)) {
+      handleProjectDelete(projectId);
     }
     return;
   }

@@ -9,6 +9,7 @@ from backend.app.db.session import get_db
 from backend.app.schemas.chat import ErrorResponse
 from backend.app.schemas.sessions import (
     SessionCreateRequest,
+    SessionDeleteResponse,
     SessionProjectMoveRequest,
     SessionResponse,
 )
@@ -41,13 +42,11 @@ def create_session(
 def list_sessions(
     project_id: Optional[int] = Query(default=None),
     include_archived: bool = Query(default=False),
-    include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> list[SessionResponse]:
     sessions = SessionService(db).list_sessions(
         project_id=project_id,
         include_archived=include_archived,
-        include_deleted=include_deleted,
     )
     return [SessionResponse.model_validate(chat_session) for chat_session in sessions]
 
@@ -82,16 +81,19 @@ def archive_session(
 
 @router.delete(
     "/{session_id}",
-    response_model=SessionResponse,
-    summary="Soft delete a session",
+    response_model=SessionDeleteResponse,
+    summary="Delete a session",
     responses={404: {"model": ErrorResponse}},
 )
 def delete_session(
     session_id: str,
     db: Session = Depends(get_db),
-) -> SessionResponse:
-    chat_session = SessionService(db).soft_delete_session(session_id)
-    return SessionResponse.model_validate(chat_session)
+) -> SessionDeleteResponse:
+    deleted_session_id = SessionService(db).delete_session(session_id)
+    return SessionDeleteResponse(
+        session_id=deleted_session_id,
+        message="Session deleted.",
+    )
 
 
 @router.post(

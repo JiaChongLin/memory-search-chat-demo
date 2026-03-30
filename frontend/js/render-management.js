@@ -1,4 +1,4 @@
-import {
+﻿import {
   getAccessModeHelpText,
   getAccessModeLabel,
   getPrivacyHelpText,
@@ -55,7 +55,6 @@ function renderSessionButton(state, session) {
       <span class="nav-session-tags">
         ${session.is_private ? badge("私密", "danger") : ""}
         ${session.status === "archived" ? badge("归档", "warning") : ""}
-        ${session.status === "deleted" ? badge("已删除", "danger") : ""}
       </span>
     </button>
   `;
@@ -81,7 +80,6 @@ function renderSidebarProjectItem(state, project) {
           </span>
           <span class="nav-project-meta">
             ${badge(getAccessModeLabel(project.access_mode), "scope")}
-            ${project.status !== "active" ? badge(getStatusLabel(project.status), "warning") : ""}
           </span>
         </button>
         <button
@@ -112,6 +110,11 @@ function renderSidebarProjectItem(state, project) {
                   `
                   : '<div class="nav-empty">当前项目下还没有会话，可以先新建聊天。</div>'
               }
+              ${
+                isSelected
+                  ? `<button class="nav-more-button" type="button" data-project-delete="${project.id}">删除当前项目</button>`
+                  : ""
+              }
             </div>
           `
           : ""
@@ -139,7 +142,7 @@ function renderProjectsSection(state, elements) {
         ? ""
         : `
           <div class="sidebar-section-body">
-            <div class="sidebar-note">项目访问模式决定跨项目边界。创建后暂不支持修改。</div>
+            <div class="sidebar-note">项目访问模式决定跨项目边界。项目删除后，会级联删除项目内所有会话、消息和摘要。</div>
             <div class="nav-list">
               ${
                 projects.length
@@ -219,7 +222,7 @@ function renderCurrentSessionPanel(state, elements) {
     <div class="session-side-card">
       <div class="mini-head">
         <h3>会话操作</h3>
-        <span class="badge ${session.status === "active" ? "success" : session.status === "archived" ? "warning" : "danger"}">${escapeHtml(
+        <span class="badge ${session.status === "active" ? "success" : "warning"}">${escapeHtml(
           getStatusLabel(session.status),
         )}</span>
       </div>
@@ -236,17 +239,10 @@ function renderCurrentSessionPanel(state, elements) {
       </div>
       <div class="inline-row action-stack">
         <button id="archiveSessionButton" class="ghost-button" type="button">归档</button>
-        <button id="deleteSessionButton" class="danger-button" type="button">软删除</button>
+        <button id="deleteSessionButton" class="danger-button" type="button">删除会话</button>
       </div>
     </div>
   `;
-
-  if (session.status === "deleted") {
-    elements.sessionBanner.className = "notice danger";
-    elements.sessionBanner.textContent =
-      "当前会话已被软删除。它仍会留在列表中作为状态记录，但不会继续用于聊天。";
-    return;
-  }
 
   if (session.status === "archived") {
     elements.sessionBanner.className = "notice warning";
@@ -327,17 +323,14 @@ export function renderManagement(state, elements) {
   const archiveButton = document.querySelector("#archiveSessionButton");
   const deleteButton = document.querySelector("#deleteSessionButton");
   const moveButton = document.querySelector("#moveSessionButton");
-  const selectedSessionLocked = ["archived", "deleted"].includes(
-    state.selectedSessionDetail?.status,
-  );
+  const selectedSessionLocked = state.selectedSessionDetail?.status === "archived";
   const hasSelectedSession = Boolean(state.selectedSessionDetail);
 
   if (archiveButton) {
     archiveButton.disabled = !hasSelectedSession || selectedSessionLocked;
   }
   if (deleteButton) {
-    deleteButton.disabled =
-      !hasSelectedSession || state.selectedSessionDetail?.status === "deleted";
+    deleteButton.disabled = !hasSelectedSession;
   }
   if (moveButton) {
     moveButton.disabled = !hasSelectedSession || selectedSessionLocked;

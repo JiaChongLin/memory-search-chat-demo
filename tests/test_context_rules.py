@@ -59,7 +59,10 @@ def _create_session(
 
 def _resolve_context(db, session_id: str):
     memory_service = MemoryService(db=db, short_window=2)
-    return ContextResolver(db=db, memory_service=memory_service).resolve_context(session_id)
+    return ContextResolver(db=db, memory_service=memory_service).resolve_context(
+        session_id,
+        allow_missing=False,
+    )
 
 
 def test_private_session_cannot_be_read_by_others() -> None:
@@ -216,7 +219,7 @@ def test_no_project_private_session_is_not_readable_from_other_sessions() -> Non
             db_path.unlink()
 
 
-def test_archived_and_deleted_sessions_do_not_enter_external_context() -> None:
+def test_archived_sessions_do_not_enter_external_context() -> None:
     engine, session_local, db_path = _build_db_session()
     try:
         with session_local() as db:
@@ -224,7 +227,6 @@ def test_archived_and_deleted_sessions_do_not_enter_external_context() -> None:
             _create_session(db, "current", project_id=open_project.id, summary="current-summary")
             _create_session(db, "active-one", project_id=open_project.id, summary="active-summary")
             _create_session(db, "archived-one", project_id=open_project.id, status="archived", summary="archived-summary")
-            _create_session(db, "deleted-one", project_id=open_project.id, status="deleted", summary="deleted-summary")
             db.commit()
 
             context = _resolve_context(db, "current")
@@ -233,9 +235,7 @@ def test_archived_and_deleted_sessions_do_not_enter_external_context() -> None:
 
             assert "active-one" in related_ids
             assert "archived-one" not in related_ids
-            assert "deleted-one" not in related_ids
             assert "archived-summary" not in context_text
-            assert "deleted-summary" not in context_text
     finally:
         engine.dispose()
         if db_path.exists():

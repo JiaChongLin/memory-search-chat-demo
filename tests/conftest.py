@@ -24,7 +24,7 @@ from backend.app.services.search_service import SearchService
 
 
 @pytest.fixture
-def client(monkeypatch):
+def test_env(monkeypatch):
     temp_dir = Path("tests/.tmp")
     temp_dir.mkdir(parents=True, exist_ok=True)
     db_path = temp_dir / f"chat_api_test_{uuid4().hex}.db"
@@ -92,9 +92,24 @@ def client(monkeypatch):
     app.dependency_overrides[get_db] = override_db
 
     with TestClient(app) as test_client:
-        yield test_client
+        yield {
+            "client": test_client,
+            "session_local": testing_session_local,
+            "db_path": db_path,
+            "engine": engine,
+        }
 
     app.dependency_overrides.clear()
     engine.dispose()
     if db_path.exists():
         db_path.unlink()
+
+
+@pytest.fixture
+def client(test_env):
+    return test_env["client"]
+
+
+@pytest.fixture
+def session_local(test_env):
+    return test_env["session_local"]

@@ -6,7 +6,6 @@
 const STATUS_LABELS = {
   active: "启用中",
   archived: "已归档",
-  deleted: "已删除",
 };
 
 const DEBUG_FIELD_LABELS = {

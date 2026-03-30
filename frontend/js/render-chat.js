@@ -1,4 +1,4 @@
-import {
+﻿import {
   getAccessModeHelpText,
   getAccessModeLabel,
   getCurrentProjectAccessLabel,
@@ -103,19 +103,9 @@ function renderHeader(state, elements) {
   elements.currentVisibilityBadge.className = `badge ${session.is_private ? "danger" : "soft"}`;
   elements.currentVisibilityBadge.textContent = getPrivacyLabel(session.is_private);
   elements.currentStatusBadge.className = `badge ${
-    session.status === "active"
-      ? "success"
-      : session.status === "archived"
-        ? "warning"
-        : "danger"
+    session.status === "active" ? "success" : "warning"
   }`;
   elements.currentStatusBadge.textContent = getStatusLabel(session.status);
-
-  if (session.status === "deleted") {
-    elements.selectionHint.textContent =
-      "当前会话已被软删除。你可以查看本地缓存消息和调试信息，但不能继续发送新消息。";
-    return;
-  }
 
   if (session.status === "archived") {
     elements.selectionHint.textContent =
@@ -195,7 +185,7 @@ function renderSummary(state, elements) {
 function renderComposerState(state, elements) {
   const session = state.selectedSessionDetail;
   const missingSelection = !session;
-  const locked = ["archived", "deleted"].includes(session?.status);
+  const locked = session?.status === "archived";
   const disabled = state.busy.chat || missingSelection || locked;
 
   elements.sendButton.disabled = disabled;
@@ -213,7 +203,7 @@ function renderComposerState(state, elements) {
   }
 
   if (locked) {
-    elements.composerHint.textContent = "当前会话已归档或已删除，输入区保持禁用。";
+    elements.composerHint.textContent = "当前会话已归档，输入区保持禁用。";
     elements.messageInput.placeholder = "请切换到其他会话，或创建一个新聊天继续测试。";
     return;
   }

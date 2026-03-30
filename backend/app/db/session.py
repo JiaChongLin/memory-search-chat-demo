@@ -2,7 +2,8 @@
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.core.config import get_settings
@@ -22,6 +23,17 @@ engine = create_engine(
     else {},
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@event.listens_for(Engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record) -> None:  # type: ignore[no-untyped-def]
+    del connection_record
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -71,18 +83,15 @@ def _migrate_sqlite_schema() -> None:
                 "NOT NULL DEFAULT 0"
             )
 
-    if not migration_statements:
-        _backfill_project_access_mode(inspector)
-        return
-
-    with engine.begin() as connection:
-        for statement in migration_statements:
-            connection.execute(text(statement))
+    if migration_statements:
+        with engine.begin() as connection:
+            for statement in migration_statements:
+                connection.execute(text(statement))
 
     _backfill_project_access_mode(inspect(engine))
 
 
-def _backfill_project_access_mode(inspector) -> None:
+def _backfill_project_access_mode(inspector) -> None:  # type: ignore[no-untyped-def]
     if not inspector.has_table("projects"):
         return
 

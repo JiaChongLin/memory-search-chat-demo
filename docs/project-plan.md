@@ -27,7 +27,6 @@
 - 扩展 `ChatSession.is_private`
 - 新增项目管理 API
 - 新增会话管理 API
-- 新增最小测试覆盖项目创建、挂项目、归档、软删除
 
 ### 阶段 2
 
@@ -42,7 +41,6 @@
 - private 会话自己仍然可以读取其他允许访问的历史
 - 当前会话始终优先读自己的 recent messages 和 summary
 - 其他会话只读取 summary，不直接拼接完整消息
-- archived / deleted 当前不进入外部上下文
 
 ### 阶段 3
 
@@ -56,7 +54,6 @@
 - 项目模型改为 `access_mode: open | project_only`
 - 会话继续保留 `is_private`，语义改为“只影响别人是否能读我”
 - `context_scope` 调试字段改为新语义：`open | project_only`
-- 补充最小测试覆盖 private / open / project_only / 无项目 shared / archived / deleted
 
 ### 阶段 4（预留）
 
@@ -91,6 +88,19 @@ Tool Layer 与 Agent-Friendly 能力封装
 
 - 其他会话的完整原始消息
 - private 会话摘要（当前会话自己除外）
-- deleted 会话
 - archived 会话
 - allowlist 相关内容（尚未实现）
+
+## 当前删除与归档规则
+
+- 会话仍支持 rchived，但 rchived 会话不能继续聊天，也不会进入上下文检索。
+- 会话删除已改成硬删除；后续开发不再围绕 deleted 状态扩展。
+- 项目删除已改成级联硬删除；删除项目时，项目内全部会话、消息和摘要会一起删除。
+- 当前不做项目归档。
+
+## 当前删除与归档规则
+
+- 会话仍支持 `archived`，但 `archived` 会话不能继续聊天，也不会进入上下文检索。
+- 会话删除已改成硬删除；后续开发不再围绕 `deleted` 状态扩展。
+- 项目删除已改成级联硬删除；删除项目时，项目内全部会话、消息和摘要会一起删除。
+- 当前不做项目归档。

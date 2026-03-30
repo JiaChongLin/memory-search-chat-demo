@@ -28,3 +28,9 @@ class SessionResponse(BaseModel):
     is_private: bool
     created_at: datetime
     updated_at: datetime
+
+
+class SessionDeleteResponse(BaseModel):
+    success: bool = True
+    session_id: str
+    message: str
