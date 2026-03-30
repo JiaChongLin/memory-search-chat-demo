@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Memory Search Chat Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <aside class="sidebar">
+        <div class="brand-card">
+          <p class="eyebrow">Memory + Search</p>
+          <h1>Chat Demo</h1>
+          <p class="brand-copy">
+            一个用于本地联调的静态前端页面，直接连接 FastAPI 后端，
+            用来观察多轮对话、搜索触发和模型降级状态。
+          </p>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>连接配置</h2>
+            <span id="healthBadge" class="pill pill-neutral">未检测</span>
+          </div>
+
+          <label class="field-label" for="backendBaseUrl">后端地址</label>
+          <div class="url-row">
+            <input
+              id="backendBaseUrl"
+              class="text-input"
+              type="text"
+              placeholder="http://127.0.0.1:8000"
+              autocomplete="off"
+            />
+            <button id="saveConfigButton" class="ghost-button" type="button">
+              保存
+            </button>
+          </div>
+
+          <div class="status-grid">
+            <div class="status-item">
+              <span class="status-label">会话 ID</span>
+              <code id="sessionIdValue">未创建</code>
+            </div>
+            <div class="status-item">
+              <span class="status-label">运行环境</span>
+              <span id="environmentValue">未知</span>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button id="checkHealthButton" class="secondary-button" type="button">
+              检查后端
+            </button>
+            <button id="resetSessionButton" class="ghost-button" type="button">
+              新建会话
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>当前摘要</h2>
+            <span id="summaryBadge" class="pill pill-soft">无摘要</span>
+          </div>
+          <p id="summaryText" class="summary-card">
+            当前会话还没有生成摘要。多聊几轮后，这里会显示后端返回的压缩记忆。
+          </p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>快速问题</h2>
+          </div>
+          <div class="quick-list">
+            <button class="quick-chip" data-prompt="你好，请简单介绍一下你自己。">
+              普通聊天
+            </button>
+            <button class="quick-chip" data-prompt="记住我叫小王，我喜欢羽毛球。">
+              记忆测试
+            </button>
+            <button class="quick-chip" data-prompt="我刚才告诉了你什么？">
+              回忆上文
+            </button>
+            <button class="quick-chip" data-prompt="today latest ai news">
+              搜索触发
+            </button>
+            <button class="quick-chip" data-prompt="现在英伟达股价是多少？">
+              实时问题
+            </button>
+          </div>
+        </section>
+      </aside>
+
+      <main class="chat-shell">
+        <header class="chat-header">
+          <div>
+            <p class="eyebrow">Frontend Demo</p>
+            <h2>聊天窗口</h2>
+          </div>
+          <div id="runtimeHint" class="runtime-hint">
+            等待第一条消息
+          </div>
+        </header>
+
+        <section id="messageList" class="message-list" aria-live="polite">
+          <article id="welcomeMessage" class="message assistant">
+            <div class="message-bubble">
+              <p class="message-role">助手</p>
+              <p>
+                页面已经准备好了。你可以先点“检查后端”，确认接口可用，再发送一条消息开始演示。
+              </p>
+            </div>
+          </article>
+        </section>
+
+        <form id="composerForm" class="composer">
+          <label class="composer-label" for="messageInput">输入消息</label>
+          <textarea
+            id="messageInput"
+            class="composer-input"
+            rows="3"
+            maxlength="4000"
+            placeholder="输入一条消息，比如：记住我叫小王，或者 today latest ai news"
+          ></textarea>
+          <div class="composer-footer">
+            <span id="composerHint" class="composer-hint">
+              Shift + Enter 换行，Enter 发送
+            </span>
+            <button id="sendButton" class="primary-button" type="submit">
+              发送消息
+            </button>
+          </div>
+        </form>
+      </main>
+    </div>
+
+    <template id="messageTemplate">
+      <article class="message">
+        <div class="message-bubble">
+          <p class="message-role"></p>
+          <div class="message-content"></div>
+          <div class="message-meta"></div>
+          <div class="source-list"></div>
+        </div>
+      </article>
+    </template>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

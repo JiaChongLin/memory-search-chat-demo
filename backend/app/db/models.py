@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -18,7 +19,7 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,
@@ -29,11 +30,12 @@ class ChatSession(Base):
         onupdate=utcnow,
     )
 
+    # 一个会话下会关联多条消息，以及一条会话摘要。
     messages: Mapped[list["ChatMessage"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
     )
-    summary: Mapped["SessionSummary | None"] = relationship(
+    summary: Mapped[Optional["SessionSummary"]] = relationship(
         back_populates="session",
         uselist=False,
         cascade="all, delete-orphan",
