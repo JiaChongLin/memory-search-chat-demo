@@ -74,23 +74,7 @@ class ContextResolver:
         )
 
     def get_accessible_summaries(self, current_session: ChatSession) -> list[RelatedSummary]:
-        stmt = (
-            select(ChatSession)
-            .join(SessionSummary, ChatSession.id == SessionSummary.session_id)
-            .outerjoin(Project, ChatSession.project_id == Project.id)
-            .options(
-                joinedload(ChatSession.project),
-                joinedload(ChatSession.summary),
-            )
-            .where(
-                ChatSession.id != current_session.id,
-                ChatSession.status == STATUS_ACTIVE,
-                ChatSession.is_private.is_(False),
-                func.length(func.trim(SessionSummary.content)) > 0,
-                or_(Project.id.is_(None), Project.status == STATUS_ACTIVE),
-            )
-            .order_by(ChatSession.updated_at.desc(), ChatSession.created_at.desc())
-        )
+        stmt = self._build_summary_candidate_query(current_session)
         candidates = list(self._db.scalars(stmt).unique())
 
         same_project_items: list[RelatedSummary] = []
@@ -114,6 +98,25 @@ class ContextResolver:
                 )
 
         return (same_project_items + external_items)[:MAX_RELATED_SUMMARIES]
+
+    def _build_summary_candidate_query(self, current_session: ChatSession):
+        return (
+            select(ChatSession)
+            .join(SessionSummary, ChatSession.id == SessionSummary.session_id)
+            .outerjoin(Project, ChatSession.project_id == Project.id)
+            .options(
+                joinedload(ChatSession.project),
+                joinedload(ChatSession.summary),
+            )
+            .where(
+                ChatSession.id != current_session.id,
+                ChatSession.status == STATUS_ACTIVE,
+                ChatSession.is_private.is_(False),
+                func.length(func.trim(SessionSummary.content)) > 0,
+                or_(Project.id.is_(None), Project.status == STATUS_ACTIVE),
+            )
+            .order_by(ChatSession.updated_at.desc(), ChatSession.created_at.desc())
+        )
 
     def _get_current_session(
         self,
@@ -195,19 +198,17 @@ class ContextResolver:
         parts: list[str] = []
 
         if current_summary:
-            parts.append(f"\u5f53\u524d\u4f1a\u8bdd\u6458\u8981\uff1a\n{current_summary}")
+            parts.append(f"当前会话摘要：\n{current_summary}")
 
         if related_summaries:
-            lines = ["\u53ef\u8bbf\u95ee\u7684\u76f8\u5173\u5386\u53f2\u6458\u8981\uff1a"]
+            lines = ["可访问的相关历史摘要："]
             for index, item in enumerate(related_summaries, start=1):
                 source_label = (
-                    "\u540c\u9879\u76ee"
+                    "同项目"
                     if item.source_scope == RELATED_SUMMARY_SOURCE_PROJECT
-                    else "\u5916\u90e8\u53ef\u8bbf\u95ee"
+                    else "外部可访问"
                 )
-                lines.append(
-                    f"{index}. {source_label}\u4f1a\u8bdd {item.session_id[:8]}\uff1a{item.content}"
-                )
+                lines.append(f"{index}. {source_label}会话 {item.session_id[:8]}：{item.content}")
             parts.append("\n".join(lines))
 
         combined = "\n\n".join(parts).strip()

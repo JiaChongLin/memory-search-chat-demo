@@ -18,7 +18,7 @@ function toBooleanMap(values) {
 }
 
 const state = {
-  backendBaseUrl: persisted.backendBaseUrl || DEFAULT_BACKEND_BASE_URL,
+  backendBaseUrl: DEFAULT_BACKEND_BASE_URL,
   currentProjectId: persisted.currentProjectId,
   currentSessionId: persisted.currentSessionId,
   summaryMap: {},
@@ -85,7 +85,6 @@ function buildPersistedSidebarState() {
 
 function persist() {
   persistStateSnapshot({
-    backendBaseUrl: state.backendBaseUrl,
     currentProjectId: state.currentProjectId,
     currentSessionId: state.currentSessionId,
     sidebar: buildPersistedSidebarState(),
