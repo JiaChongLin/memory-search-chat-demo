@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import re
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -60,6 +61,11 @@ class SessionService:
 
     def get_session(self, session_id: str) -> ChatSession:
         return self._get_session_or_404(session_id)
+
+    def get_session_summary(self, session_id: str) -> tuple[str | None, datetime | None]:
+        chat_session = self._get_session_or_404(session_id)
+        summary = chat_session.summary.content if chat_session.summary else None
+        return summary, chat_session.summary_updated_at
 
     def get_session_messages(self, session_id: str) -> list[ChatMessage]:
         self._get_session_or_404(session_id)

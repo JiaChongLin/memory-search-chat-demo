@@ -203,6 +203,28 @@
         </div>
       </div>
     </div>
+
+    <div id="inputModal" class="modal-shell hidden">
+      <div class="modal-backdrop" data-close-input-modal="true"></div>
+      <div class="modal-card confirm-modal-card">
+        <div class="panel-head compact">
+          <h2 id="inputModalTitle">输入内容</h2>
+          <button id="closeInputModalButton" class="icon-button" type="button" aria-label="关闭">
+            ×
+          </button>
+        </div>
+
+        <div class="confirm-modal-body modal-form">
+          <p id="inputModalBody" class="detail-copy"></p>
+          <input id="inputModalField" class="text-input" type="text" maxlength="255" />
+        </div>
+
+        <div class="inline-row confirm-modal-actions">
+          <button id="inputCancelButton" class="ghost-button" type="button">取消</button>
+          <button id="inputAcceptButton" class="primary-button" type="button">保存</button>
+        </div>
+      </div>
+    </div>
     <template id="messageTemplate">
       <article class="message-card">
         <div class="message-head">
@@ -218,3 +240,4 @@
     <script type="module" src="./js/main.js"></script>
   </body>
 </html>
+

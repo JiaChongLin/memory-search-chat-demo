@@ -1,4 +1,4 @@
-import { elements } from "./dom.js";
+﻿import { elements } from "./dom.js";
 import { renderChat } from "./render-chat.js";
 import { renderManagement } from "./render-management.js";
 import { subscribe } from "./state.js";
@@ -25,11 +25,15 @@ export function createBootstrap() {
     showTransientNotice: noticeModal.showTransientNotice,
     openConfirmModal: noticeModal.openConfirmModal,
     closeConfirmModal: noticeModal.closeConfirmModal,
+    openInputModal: noticeModal.openInputModal,
+    closeInputModal: noticeModal.closeInputModal,
+    handleInputModalSubmit: noticeModal.handleInputModalSubmit,
   });
 
   const runtime = createAppRuntime({
     syncSelectedSessionDetail: managementController.syncSelectedSessionDetail,
     ensureSessionMessages: managementController.ensureSessionMessages,
+    ensureSessionSummary: managementController.ensureSessionSummary,
   });
 
   managementController.configureRuntime({
@@ -47,6 +51,7 @@ export function createBootstrap() {
     refreshSessions: runtime.refreshSessions,
     resetComposer: () => resetComposer(elements),
     sendChat,
+    showTransientNotice: noticeModal.showTransientNotice,
   });
 
   async function bootstrap() {
@@ -60,7 +65,7 @@ export function createBootstrap() {
     resizeComposer(elements);
     await runtime.refreshHealth(true);
     await runtime.refreshProjects({ silent: true });
-    await runtime.refreshSessions({ silent: true, forceMessages: true });
+    await runtime.refreshSessions({ silent: true, forceMessages: true, forceSummary: true });
   }
 
   return { bootstrap };

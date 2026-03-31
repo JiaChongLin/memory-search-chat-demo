@@ -1,4 +1,4 @@
-import { healthCheck, listProjects, listSessions, normalizeBaseUrl } from "./api.js";
+﻿import { healthCheck, listProjects, listSessions, normalizeBaseUrl } from "./api.js";
 import {
   clearNotice,
   getState,
@@ -13,7 +13,11 @@ import {
 } from "./state.js";
 import { formatErrorMessage } from "./helpers/ui-helpers.js";
 
-export function createAppRuntime({ syncSelectedSessionDetail, ensureSessionMessages }) {
+export function createAppRuntime({
+  syncSelectedSessionDetail,
+  ensureSessionMessages,
+  ensureSessionSummary,
+}) {
   function getBaseUrl() {
     return normalizeBaseUrl(getState().backendBaseUrl);
   }
@@ -33,14 +37,14 @@ export function createAppRuntime({ syncSelectedSessionDetail, ensureSessionMessa
       const baseUrl = getBaseUrl();
       await healthCheck(baseUrl);
       setBackendBaseUrl(baseUrl);
-      setHealth({ status: "success", label: "已连接", environment: "connected" });
+      setHealth({ status: "success", label: "连接正常", environment: "connected" });
       if (!silent) {
         clearNotice("global");
       }
     } catch (error) {
-      setHealth({ status: "warning", label: "连接异常", environment: "unavailable" });
+      setHealth({ status: "warning", label: "后端不可用", environment: "unavailable" });
       if (!silent) {
-        setNotice("global", `检查后端失败：${formatErrorMessage(error)}`, "danger");
+        setNotice("global", `后端连接失败：${formatErrorMessage(error)}`, "danger");
       }
     } finally {
       setBusy("health", false);
@@ -80,10 +84,16 @@ export function createAppRuntime({ syncSelectedSessionDetail, ensureSessionMessa
       await syncSelectedSessionDetail();
 
       const state = getState();
-      if (state.currentSessionId && options.loadMessages !== false) {
-        await ensureSessionMessages(state.currentSessionId, {
-          force: Boolean(options.forceMessages),
+      if (state.currentSessionId) {
+        await ensureSessionSummary(state.currentSessionId, {
+          force: Boolean(options.forceSummary),
         });
+
+        if (options.loadMessages !== false) {
+          await ensureSessionMessages(state.currentSessionId, {
+            force: Boolean(options.forceMessages),
+          });
+        }
       }
 
       if (!options.silent) {

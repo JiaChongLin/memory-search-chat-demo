@@ -194,3 +194,12 @@ pytest tests/test_context_rules.py tests/test_management_api.py tests/test_chat_
 - summary 版本管理
 - 跨会话完整消息级读取（暂不做）
 - embedding memory / 全文检索（暂不做）
+
+## 前端恢复与提示行为补充
+
+- 当前前端刷新后会继续恢复 `currentProjectId`、`currentSessionId` 和侧边栏 UI 状态。
+- 当前会话的消息历史主要通过 `GET /api/sessions/{session_id}/messages` 回读恢复。
+- 当前会话的内部 summary 现在会通过 `GET /api/sessions/{session_id}/summary` 回读恢复，不再依赖把 summary 长期写进 `localStorage`。
+- 调试面板里的上下文快照仍然是当前页面内临时信息；刷新后不会从后端恢复，这属于当前设计，而不是缓存丢失 bug。
+- 会话改名现在使用页面内轻量弹窗，不再使用浏览器原生 `prompt`。
+- success / info 类型提示默认会短暂显示后淡出；warning / error 仍然保持可见，便于排查问题。

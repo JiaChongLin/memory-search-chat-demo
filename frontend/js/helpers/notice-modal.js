@@ -6,6 +6,7 @@ const NOTICE_FADE_MS = 320;
 export function createNoticeModalHelpers({ elements }) {
   const noticeTimers = new Map();
   let pendingConfirmResolve = null;
+  let pendingInputResolve = null;
 
   function getNoticeElement(scope) {
     if (scope === "projects") {
@@ -91,18 +92,79 @@ export function createNoticeModalHelpers({ elements }) {
     });
   }
 
+  function closeInputModal(result = null) {
+    if (elements.inputModal) {
+      elements.inputModal.classList.add("hidden");
+    }
+
+    const resolver = pendingInputResolve;
+    pendingInputResolve = null;
+    if (resolver) {
+      resolver(result);
+    }
+  }
+
+  function openInputModal({
+    title = "输入内容",
+    body = "请填写内容。",
+    value = "",
+    placeholder = "",
+    confirmLabel = "保存",
+  }) {
+    if (!elements.inputModal) {
+      return Promise.resolve(null);
+    }
+
+    if (pendingInputResolve) {
+      closeInputModal(null);
+    }
+
+    elements.inputModalTitle.textContent = title;
+    elements.inputModalBody.textContent = body;
+    elements.inputModalField.value = value || "";
+    elements.inputModalField.placeholder = placeholder || "";
+    elements.inputAcceptButton.textContent = confirmLabel;
+    elements.inputModal.classList.remove("hidden");
+
+    window.setTimeout(() => {
+      elements.inputModalField.focus();
+      elements.inputModalField.select();
+    }, 0);
+
+    return new Promise((resolve) => {
+      pendingInputResolve = resolve;
+    });
+  }
+
+  function handleInputModalSubmit() {
+    if (!elements.inputModalField) {
+      closeInputModal(null);
+      return;
+    }
+    closeInputModal(elements.inputModalField.value);
+  }
+
   function handleGlobalKeydown(event, closeProjectModal) {
-    if (event.key !== "Escape") {
+    if (event.key === "Escape") {
+      if (pendingInputResolve) {
+        closeInputModal(null);
+        return;
+      }
+
+      if (pendingConfirmResolve) {
+        closeConfirmModal(false);
+        return;
+      }
+
+      if (!elements.projectModal.classList.contains("hidden")) {
+        closeProjectModal();
+      }
       return;
     }
 
-    if (pendingConfirmResolve) {
-      closeConfirmModal(false);
-      return;
-    }
-
-    if (!elements.projectModal.classList.contains("hidden")) {
-      closeProjectModal();
+    if (event.key === "Enter" && pendingInputResolve && event.target === elements.inputModalField) {
+      event.preventDefault();
+      handleInputModalSubmit();
     }
   }
 
@@ -110,6 +172,9 @@ export function createNoticeModalHelpers({ elements }) {
     showTransientNotice,
     closeConfirmModal,
     openConfirmModal,
+    closeInputModal,
+    openInputModal,
+    handleInputModalSubmit,
     handleGlobalKeydown,
   };
 }

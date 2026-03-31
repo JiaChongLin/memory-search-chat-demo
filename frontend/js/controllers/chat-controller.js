@@ -1,5 +1,13 @@
 ﻿import { getAccessModeLabel } from "../labels.js";
-import { appendMessage, setBusy, setChatDebug, setCurrentSessionId, setNotice, setSelectedSessionDetail, setSummaryForSession } from "../state.js";
+import {
+  appendMessage,
+  setBusy,
+  setChatDebug,
+  setCurrentSessionId,
+  setNotice,
+  setSelectedSessionDetail,
+  setSummaryForSession,
+} from "../state.js";
 import { buildAssistantDebug } from "../helpers/ui-helpers.js";
 
 export function createChatController({
@@ -10,6 +18,7 @@ export function createChatController({
   refreshSessions,
   resetComposer,
   sendChat,
+  showTransientNotice,
 }) {
   async function handleChatSubmit(event) {
     event.preventDefault();
@@ -69,7 +78,7 @@ export function createChatController({
         debug: buildAssistantDebug(response),
       });
 
-      setNotice(
+      showTransientNotice(
         "chat",
         `消息已发送，当前上下文解析结果为 ${getAccessModeLabel(response.context_scope)}。`,
         "success",

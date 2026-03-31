@@ -38,6 +38,12 @@ class SessionResponse(BaseModel):
     updated_at: datetime
 
 
+class SessionSummaryResponse(BaseModel):
+    session_id: str
+    summary: Optional[str] = None
+    summary_updated_at: Optional[datetime] = None
+
+
 class MessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

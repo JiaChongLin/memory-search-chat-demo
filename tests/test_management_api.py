@@ -172,6 +172,30 @@ def test_get_session_messages_returns_messages_in_order(client: TestClient) -> N
     assert payload[2]["content"] == "second question"
 
 
+def test_get_session_summary_returns_current_summary(client: TestClient) -> None:
+    create_response = client.post("/api/sessions", json={"title": "Summary history"})
+    session_id = create_response.json()["id"]
+
+    for message in [
+        "first summary seed",
+        "second summary seed",
+        "third summary seed",
+        "fourth summary seed",
+    ]:
+        assert client.post(
+            "/api/chat",
+            json={"session_id": session_id, "message": message},
+        ).status_code == 200
+
+    response = client.get(f"/api/sessions/{session_id}/summary")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == session_id
+    assert isinstance(payload["summary"], str)
+    assert payload["summary"]
+    assert payload["summary_updated_at"] is not None
+
 def test_patch_session_updates_title(client: TestClient) -> None:
     create_response = client.post("/api/sessions", json={"title": "Old title"})
     session_id = create_response.json()["id"]
@@ -286,3 +310,5 @@ def test_move_session_out_of_project(client: TestClient) -> None:
 
     assert move_response.status_code == 200
     assert move_response.json()["project_id"] is None
+
+

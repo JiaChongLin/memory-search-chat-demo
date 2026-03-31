@@ -173,6 +173,9 @@ function renderDebugPanel(state, elements) {
   if (session) {
     notes.push(`当前会话：${getPrivacyHelpText(session.is_private)}`);
   }
+  if (!debug && sessionId) {
+    notes.push("调试快照只在当前页面会话内保留；刷新后不会从后端恢复。")
+  }
 
   elements.debugNote.textContent = notes.length
     ? notes.join(" ")
@@ -189,7 +192,7 @@ function renderSummary(state, elements) {
   }
 
   elements.summaryText.textContent = state.currentSessionId
-    ? "当前选中会话暂时还没有可显示的 summary。发送聊天后，或当本地缓存里已有摘要时，这里会显示会话摘要。"
+    ? "当前选中会话暂时还没有可显示的 summary。发送聊天后，或刷新后从后端回读到内部摘要时，这里会显示会话 summary。"
     : "当前没有选中会话。请先在左侧导航中创建或选择会话。";
   elements.summaryBadge.className = "badge neutral";
   elements.summaryBadge.textContent = "无摘要";

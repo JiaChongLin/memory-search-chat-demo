@@ -7,6 +7,7 @@ import {
   deleteSession,
   getSession,
   getSessionMessages,
+  getSessionSummary,
   moveSession,
   updateProject,
   updateSession,
@@ -16,6 +17,7 @@ import {
   clearNotice,
   getMessagesForSession,
   getState,
+  getSummaryForSession,
   removeSessionData,
   setBusy,
   setCurrentProjectId,
@@ -45,6 +47,9 @@ export function createProjectSessionController({
   showTransientNotice,
   openConfirmModal,
   closeConfirmModal,
+  openInputModal,
+  closeInputModal,
+  handleInputModalSubmit,
 }) {
   let getBaseUrl = () => "http://127.0.0.1:8000";
   let refreshProjects = async () => {};
@@ -127,6 +132,32 @@ export function createProjectSessionController({
         return;
       }
       setNotice("sessions", `加载会话历史失败：${formatErrorMessage(error)}`, "warning");
+    }
+  }
+
+  async function ensureSessionSummary(sessionId, options = {}) {
+    if (!sessionId) {
+      return;
+    }
+
+    const force = Boolean(options.force);
+    if (!force && getSummaryForSession(sessionId)) {
+      return;
+    }
+
+    try {
+      const payload = await getSessionSummary(getBaseUrl(), sessionId);
+      setSummaryForSession(sessionId, payload.summary || null);
+    } catch (error) {
+      if (error.status === 404) {
+        removeSessionData(sessionId);
+        if (getState().currentSessionId === sessionId) {
+          clearSessionSelection();
+        }
+        setNotice("sessions", "该会话不存在，无法读取内部 summary。", "warning");
+        return;
+      }
+      setNotice("sessions", `加载会话 summary 失败：${formatErrorMessage(error)}`, "warning");
     }
   }
 
@@ -312,6 +343,7 @@ export function createProjectSessionController({
     if (session) {
       syncProjectSelection(session.project_id);
     }
+    await ensureSessionSummary(sessionId, { force: true });
     await ensureSessionMessages(sessionId, { force: false });
   }
 
@@ -323,7 +355,13 @@ export function createProjectSessionController({
       return;
     }
 
-    const nextTitle = window.prompt("输入新的会话标题", session.title || "");
+    const nextTitle = await openInputModal({
+      title: "会话改名",
+      body: "输入新的会话标题。留空时会恢复为未命名会话。",
+      value: session.title || "",
+      placeholder: "输入会话标题",
+      confirmLabel: "保存标题",
+    });
     if (nextTitle === null) {
       return;
     }
@@ -333,7 +371,11 @@ export function createProjectSessionController({
         title: nextTitle,
       });
       setSelectedSessionDetail(updated);
-      setNotice("sessions", `会话已改名为“${getSessionTitle(updated.title)}”。`, "success");
+      showTransientNotice(
+        "sessions",
+        `会话已改名为“${getSessionTitle(updated.title)}”。`,
+        "success",
+      );
       await refreshSessions({ silent: true, loadMessages: false });
     } catch (error) {
       setNotice("sessions", `改名失败：${formatErrorMessage(error)}`, "danger");
@@ -352,7 +394,7 @@ export function createProjectSessionController({
         is_private: !session.is_private,
       });
       setSelectedSessionDetail(updated);
-      setNotice(
+      showTransientNotice(
         "sessions",
         `会话已切换为${getPrivacyLabel(updated.is_private)}。后续上下文解析会立即按新规则生效。`,
         "success",
@@ -367,7 +409,7 @@ export function createProjectSessionController({
     try {
       const session = await archiveSession(getBaseUrl(), sessionId);
       setSelectedSessionDetail(session);
-      setNotice("sessions", `会话 ${String(sessionId).slice(0, 10)} 已归档。`, "success");
+      showTransientNotice("sessions", `会话 ${String(sessionId).slice(0, 10)} 已归档。`, "success");
       await refreshSessions({ silent: true, loadMessages: false });
     } catch (error) {
       setNotice("sessions", `归档失败：${formatErrorMessage(error)}`, "danger");
@@ -424,7 +466,7 @@ export function createProjectSessionController({
       const session = await moveSession(getBaseUrl(), state.currentSessionId, targetProjectId);
       setSelectedSessionDetail(session);
       syncProjectSelection(session.project_id);
-      setNotice(
+      showTransientNotice(
         "sessions",
         targetProjectId === null ? "会话已移出项目。" : "会话已移动到目标项目。",
         "success",
@@ -567,6 +609,20 @@ export function createProjectSessionController({
     }
 
     if (
+      event.target.closest("#closeInputModalButton") ||
+      event.target.closest("#inputCancelButton") ||
+      event.target.closest("[data-close-input-modal]")
+    ) {
+      closeInputModal(null);
+      return;
+    }
+
+    if (event.target.closest("#inputAcceptButton")) {
+      handleInputModalSubmit();
+      return;
+    }
+
+    if (
       getState().ui.newChatMenuOpen &&
       !event.target.closest("#newChatButton") &&
       !event.target.closest("#newChatMenu")
@@ -579,6 +635,7 @@ export function createProjectSessionController({
     configureRuntime,
     closeProjectModal,
     ensureSessionMessages,
+    ensureSessionSummary,
     syncSelectedSessionDetail,
     handleProjectSubmit,
     handleNewChatClick,
