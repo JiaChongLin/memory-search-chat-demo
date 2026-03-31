@@ -123,3 +123,29 @@
 - 前端已经为 `newChatMenuOpen` 增加 no-op 保护，避免点击空白区域时触发无意义重渲染，从而影响文本选择体验。
 
 
+
+## 会话层设计原则（补充）
+
+- `ChatMessage` 是 source of truth；消息历史是最终依据。
+- `SessionSummary` 是 derived artifact；它只是内部记忆层缓存。
+- `is_private` 是可逆的会话级可见性开关，可从 shared 切到 private，也可再切回 shared。
+- `is_private` 只限制“别人能不能读我”，不限制“我能不能读别人”。
+- summary 当前仍然是规则压缩，而不是每轮 LLM 摘要。
+
+## 当前已实现的会话层底座
+
+- 会话元数据维护：`updated_at` / `last_message_at` / `message_count` / `summary_updated_at`
+- 完整消息历史回读
+- 自动命名与手动改名
+- 私密性可逆切换
+- 前端共享/私密会话创建与当前会话私密性切换
+
+## Session Layer TODO
+
+- summary 校验与回源重建
+- 消息分页 / 懒加载
+- 会话搜索
+- 更强的摘要策略
+- summary 版本管理
+- 跨会话完整消息级读取（暂不做）
+- embedding memory / 全文检索（暂不做）

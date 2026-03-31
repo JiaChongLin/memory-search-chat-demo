@@ -82,13 +82,28 @@ def _migrate_sqlite_schema() -> None:
                 "ALTER TABLE chat_sessions ADD COLUMN is_private BOOLEAN "
                 "NOT NULL DEFAULT 0"
             )
+        if "last_message_at" not in chat_session_columns:
+            migration_statements.append(
+                "ALTER TABLE chat_sessions ADD COLUMN last_message_at DATETIME"
+            )
+        if "message_count" not in chat_session_columns:
+            migration_statements.append(
+                "ALTER TABLE chat_sessions ADD COLUMN message_count INTEGER "
+                "NOT NULL DEFAULT 0"
+            )
+        if "summary_updated_at" not in chat_session_columns:
+            migration_statements.append(
+                "ALTER TABLE chat_sessions ADD COLUMN summary_updated_at DATETIME"
+            )
 
     if migration_statements:
         with engine.begin() as connection:
             for statement in migration_statements:
                 connection.execute(text(statement))
 
-    _backfill_project_access_mode(inspect(engine))
+    inspector = inspect(engine)
+    _backfill_project_access_mode(inspector)
+    _backfill_session_metadata(inspector)
 
 
 def _backfill_project_access_mode(inspector) -> None:  # type: ignore[no-untyped-def]
@@ -132,4 +147,46 @@ def _backfill_project_access_mode(inspector) -> None:  # type: ignore[no-untyped
                     "open_mode": PROJECT_ACCESS_OPEN,
                     "project_only_mode": PROJECT_ACCESS_PROJECT_ONLY,
                 },
+            )
+
+
+def _backfill_session_metadata(inspector) -> None:  # type: ignore[no-untyped-def]
+    if not inspector.has_table("chat_sessions"):
+        return
+
+    session_columns = {column["name"] for column in inspector.get_columns("chat_sessions")}
+    if "message_count" not in session_columns:
+        return
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE chat_sessions "
+                "SET message_count = ("
+                "  SELECT COUNT(*) FROM chat_messages "
+                "  WHERE chat_messages.session_id = chat_sessions.id"
+                ")"
+            )
+        )
+
+        if "last_message_at" in session_columns and inspector.has_table("chat_messages"):
+            connection.execute(
+                text(
+                    "UPDATE chat_sessions "
+                    "SET last_message_at = ("
+                    "  SELECT MAX(created_at) FROM chat_messages "
+                    "  WHERE chat_messages.session_id = chat_sessions.id"
+                    ")"
+                )
+            )
+
+        if "summary_updated_at" in session_columns and inspector.has_table("session_summaries"):
+            connection.execute(
+                text(
+                    "UPDATE chat_sessions "
+                    "SET summary_updated_at = ("
+                    "  SELECT updated_at FROM session_summaries "
+                    "  WHERE session_summaries.session_id = chat_sessions.id"
+                    ")"
+                )
             )

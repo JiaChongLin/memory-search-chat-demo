@@ -145,3 +145,20 @@ def test_chat_does_not_override_existing_manual_title(
         session = db.get(ChatSession, session_id)
         assert session is not None
         assert session.title == "Manual title"
+
+def test_chat_updates_session_message_metadata(client: TestClient, session_local) -> None:
+    create_response = client.post("/api/sessions", json={"title": "Metadata"})
+    session_id = create_response.json()["id"]
+
+    response = client.post(
+        "/api/chat",
+        json={"session_id": session_id, "message": "track session metadata"},
+    )
+
+    assert response.status_code == 200
+
+    with session_local() as db:
+        session = db.get(ChatSession, session_id)
+        assert session is not None
+        assert session.message_count == 2
+        assert session.last_message_at is not None

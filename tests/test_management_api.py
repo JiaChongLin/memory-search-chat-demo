@@ -107,6 +107,28 @@ def test_create_session_under_project(client: TestClient) -> None:
     assert data["status"] == "active"
 
 
+def test_patch_session_can_toggle_is_private_bidirectionally(client: TestClient) -> None:
+    create_response = client.post(
+        "/api/sessions",
+        json={"title": "Privacy toggle", "is_private": False},
+    )
+    session_id = create_response.json()["id"]
+
+    to_private = client.patch(
+        f"/api/sessions/{session_id}",
+        json={"is_private": True},
+    )
+    assert to_private.status_code == 200
+    assert to_private.json()["is_private"] is True
+
+    to_shared = client.patch(
+        f"/api/sessions/{session_id}",
+        json={"is_private": False},
+    )
+    assert to_shared.status_code == 200
+    assert to_shared.json()["is_private"] is False
+
+
 def test_archive_session_hides_it_from_default_list(client: TestClient) -> None:
     create_response = client.post("/api/sessions", json={"title": "Archive me"})
     session_id = create_response.json()["id"]

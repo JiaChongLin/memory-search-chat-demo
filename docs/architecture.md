@@ -111,3 +111,24 @@
 2. tool 优先调用 service，不直接操作数据库
 3. 当前聊天主流程不依赖 tool 层
 4. tool 层属于未来扩展，不是当前 MVP 范围
+
+## 会话层收口说明（补充）
+
+当前会话层底座采用以下原则：
+
+- `ChatMessage` 是 source of truth
+- `SessionSummary` 是 derived artifact
+- `is_private` 是会话级、可逆的可见性开关
+- summary 继续走规则压缩，暂不升级为每轮 LLM 摘要
+
+对应到分层职责：
+
+- `MemoryService` 负责消息写入、规则摘要维护，以及会话元数据同步更新
+- `SessionService` 负责会话元数据读取、标题更新、私密性更新
+- `ContextResolver` 在读取其他会话时遵守最新的 `is_private` 值，因此私密性切换后会立即生效
+
+这也意味着：
+
+- UI 中展示的 summary 只是内部调试视图，不是主对象
+- 如果 summary 缓存异常，未来应允许回源到 `ChatMessage` 重建
+- 当前仍然不做跨会话完整消息级读取，也不做 embedding memory / 全文检索

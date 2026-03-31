@@ -2,6 +2,7 @@
   getAccessModeHelpText,
   getAccessModeLabel,
   getPrivacyHelpText,
+  getPrivacyLabel,
   getSessionTitle,
   getStatusLabel,
 } from "./labels.js";
@@ -17,6 +18,24 @@ function escapeHtml(value) {
 
 function badge(text, variant = "soft") {
   return `<span class="badge ${variant}">${escapeHtml(text)}</span>`;
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "暂无";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "暂无";
+  }
+
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function renderNotice(element, notice) {
@@ -52,7 +71,7 @@ function renderSessionButton(state, session) {
     >
       <span class="nav-session-title">${escapeHtml(getSessionTitle(session.title))}</span>
       <span class="nav-session-tags">
-        ${session.is_private ? badge("私密", "danger") : ""}
+        ${session.is_private ? badge("私密", "danger") : badge("共享", "soft")}
         ${session.status === "archived" ? badge("归档", "warning") : ""}
       </span>
     </button>
@@ -126,7 +145,6 @@ function renderSidebarProjectItem(state, project) {
                   `
                   : '<div class="nav-empty">当前项目下还没有会话，可以先新建聊天。</div>'
               }
-              
             </div>
           `
           : ""
@@ -222,7 +240,7 @@ function renderCurrentSessionPanel(state, elements) {
           <h3>会话操作</h3>
           <span class="badge neutral">未选择</span>
         </div>
-        <p class="detail-copy">选择会话后，这里会显示移动、归档和删除等操作。</p>
+        <p class="detail-copy">选择会话后，这里会显示私密性切换、移动、归档和删除等操作。</p>
       </div>
     `;
     elements.sessionBanner.className = "notice hidden";
@@ -242,16 +260,20 @@ function renderCurrentSessionPanel(state, elements) {
       <div class="detail-meta stacked">
         <span>会话 ID：${escapeHtml(session.id)}</span>
         <span>所属项目：${escapeHtml(project ? project.name : "无项目会话")}</span>
-        <span>访问边界：${escapeHtml(project ? getAccessModeHelpText(project.access_mode) : "当前会话不属于任何项目，按开放可访问历史处理。")}</span>
+        <span>会话可见性：${escapeHtml(getPrivacyLabel(session.is_private))}</span>
+        <span>消息数量：${escapeHtml(String(session.message_count ?? 0))}</span>
+        <span>最后一条消息：${escapeHtml(formatDateTime(session.last_message_at))}</span>
+      </div>
+      <p class="hint-text">切换私密性只影响其他会话能否读取当前会话，不影响当前会话读取别人。</p>
+      <div class="inline-row action-stack">
+        <button id="toggleSessionPrivacyButton" class="ghost-button" type="button">${session.is_private ? "设为共享" : "设为私密"}</button>
+        <button id="archiveSessionButton" class="ghost-button" type="button">归档</button>
+        <button id="deleteSessionButton" class="danger-button" type="button">删除会话</button>
       </div>
       <label class="field-label" for="moveProjectSelect">移动到项目</label>
       <div class="inline-row">
         <select id="moveProjectSelect" class="select-input"></select>
         <button id="moveSessionButton" class="secondary-button" type="button">移动</button>
-      </div>
-      <div class="inline-row action-stack">
-        <button id="archiveSessionButton" class="ghost-button" type="button">归档</button>
-        <button id="deleteSessionButton" class="danger-button" type="button">删除会话</button>
       </div>
     </div>
   `;
@@ -259,7 +281,7 @@ function renderCurrentSessionPanel(state, elements) {
   if (session.status === "archived") {
     elements.sessionBanner.className = "notice warning";
     elements.sessionBanner.textContent =
-      "当前会话已归档。你仍然可以查看消息历史和摘要，但聊天输入区会保持禁用。";
+      "当前会话已归档。你仍然可以查看消息历史和内部摘要调试信息，但聊天输入区会保持禁用。";
     return;
   }
 
@@ -293,7 +315,7 @@ function renderProjectSelectOptions(state) {
 
 function renderNewChatMenu(state, elements) {
   const project = state.selectedProjectDetail;
-  const isOpen = state.ui.newChatMenuOpen && Boolean(project);
+  const isOpen = state.ui.newChatMenuOpen;
 
   elements.newChatMenu.className = isOpen ? "floating-menu" : "floating-menu hidden";
   if (!isOpen) {
@@ -301,13 +323,31 @@ function renderNewChatMenu(state, elements) {
     return;
   }
 
+  const headerCopy = project
+    ? `当前已选中项目 <strong>${escapeHtml(project.name)}</strong>。可以创建共享或私密会话，并决定是否挂到当前项目下。`
+    : "当前没有选中项目。可以先创建未归属会话，后续再移动到某个项目。";
+
+  const currentProjectActions = project
+    ? `
+        <div class="floating-menu-group">
+          <span class="floating-menu-label">当前项目</span>
+          <div class="floating-menu-actions">
+            <button class="secondary-button" type="button" data-create-session-scope="current-project" data-create-session-private="false">共享会话</button>
+            <button class="ghost-button" type="button" data-create-session-scope="current-project" data-create-session-private="true">私密会话</button>
+          </div>
+        </div>
+      `
+    : "";
+
   elements.newChatMenu.innerHTML = `
-    <p class="floating-menu-copy">
-      当前已选中项目 <strong>${escapeHtml(project.name)}</strong>。新聊天可以直接创建到该项目下，也可以先创建为未归属会话。
-    </p>
-    <div class="floating-menu-actions">
-      <button id="createChatInProjectButton" class="secondary-button" type="button">创建到当前项目</button>
-      <button id="createUnassignedChatButton" class="ghost-button" type="button">创建未归属会话</button>
+    <p class="floating-menu-copy">${headerCopy}</p>
+    ${currentProjectActions}
+    <div class="floating-menu-group">
+      <span class="floating-menu-label">未归属会话</span>
+      <div class="floating-menu-actions">
+        <button class="secondary-button" type="button" data-create-session-scope="unassigned" data-create-session-private="false">共享会话</button>
+        <button class="ghost-button" type="button" data-create-session-scope="unassigned" data-create-session-private="true">私密会话</button>
+      </div>
     </div>
   `;
 }
@@ -360,6 +400,7 @@ export function renderManagement(state, elements) {
   const archiveButton = document.querySelector("#archiveSessionButton");
   const deleteButton = document.querySelector("#deleteSessionButton");
   const moveButton = document.querySelector("#moveSessionButton");
+  const privacyButton = document.querySelector("#toggleSessionPrivacyButton");
   const selectedSessionLocked = state.selectedSessionDetail?.status === "archived";
   const hasSelectedSession = Boolean(state.selectedSessionDetail);
 
@@ -372,5 +413,7 @@ export function renderManagement(state, elements) {
   if (moveButton) {
     moveButton.disabled = !hasSelectedSession || selectedSessionLocked;
   }
+  if (privacyButton) {
+    privacyButton.disabled = !hasSelectedSession;
+  }
 }
-

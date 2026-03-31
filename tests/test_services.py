@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.core.config import Settings
-from backend.app.db.models import Base
+from backend.app.db.models import Base, ChatSession
 from backend.app.services.llm_service import LLMService
 from backend.app.services.memory_service import MemoryService
 from backend.app.services.search_service import DuckDuckGoHTMLParser, SearchResult
@@ -81,6 +81,43 @@ def test_memory_service_builds_summary_after_window() -> None:
 
             assert summary is not None
             assert "用户" in summary
+    finally:
+        engine.dispose()
+        if db_path.exists():
+            db_path.unlink()
+
+
+def test_memory_service_updates_session_metadata_and_summary_timestamp() -> None:
+    temp_dir = Path("tests/.tmp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    db_path = temp_dir / f"memory_service_metadata_test_{uuid4().hex}.db"
+
+    engine = create_engine(
+        f"sqlite:///{db_path.as_posix()}",
+        connect_args={"check_same_thread": False},
+    )
+    session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+    try:
+        with session_local() as db:
+            service = MemoryService(
+                db=db,
+                short_window=2,
+                summary_enabled=True,
+                summary_max_chars=200,
+            )
+            session_id = uuid4().hex
+
+            service.append_turn(session_id, "first", "reply")
+            service.append_turn(session_id, "second", "reply")
+            service.append_turn(session_id, "third", "reply")
+
+            session = db.get(ChatSession, session_id)
+            assert session is not None
+            assert session.message_count == 6
+            assert session.last_message_at is not None
+            assert session.summary_updated_at is not None
     finally:
         engine.dispose()
         if db_path.exists():

@@ -76,10 +76,17 @@ class SessionService:
         payload: SessionUpdateRequest,
     ) -> ChatSession:
         chat_session = self._get_session_or_404(session_id)
-        chat_session.title = self._normalize_title(payload.title)
-        chat_session.updated_at = utcnow()
-        self._db.commit()
-        self._db.refresh(chat_session)
+        changes = payload.model_dump(exclude_unset=True)
+
+        if "title" in changes:
+            chat_session.title = self._normalize_title(payload.title)
+        if "is_private" in changes and payload.is_private is not None:
+            chat_session.is_private = payload.is_private
+
+        if changes:
+            chat_session.updated_at = utcnow()
+            self._db.commit()
+            self._db.refresh(chat_session)
         return chat_session
 
     def archive_session(self, session_id: str) -> ChatSession:

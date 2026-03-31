@@ -57,7 +57,7 @@ class MemoryService:
     ) -> Optional[str]:
         try:
             session = self._get_or_create_session(session_id)
-            session.updated_at = utcnow()
+            turn_timestamp = utcnow()
 
             self._db.add_all(
                 [
@@ -65,21 +65,26 @@ class MemoryService:
                         session_id=session_id,
                         role="user",
                         content=user_message,
+                        created_at=turn_timestamp,
                     ),
                     ChatMessage(
                         session_id=session_id,
                         role="assistant",
                         content=assistant_message,
+                        created_at=turn_timestamp,
                     ),
                 ]
             )
+            session.updated_at = turn_timestamp
+            session.last_message_at = turn_timestamp
+            session.message_count = max(session.message_count or 0, 0) + 2
             self._db.flush()
 
             updated_summary = self.get_summary(session_id)
             if self._summary_enabled:
                 messages = self._list_messages(session_id)
                 updated_summary = self._build_summary(messages)
-                self._save_summary(session_id, updated_summary)
+                self._save_summary(session, updated_summary)
 
             self._db.commit()
             return updated_summary
@@ -103,22 +108,29 @@ class MemoryService:
         )
         return [self._to_memory_message(message) for message in self._db.scalars(stmt)]
 
-    def _save_summary(self, session_id: str, summary: Optional[str]) -> None:
-        stmt = select(SessionSummary).where(SessionSummary.session_id == session_id)
+    def _save_summary(self, session: ChatSession, summary: Optional[str]) -> None:
+        stmt = select(SessionSummary).where(SessionSummary.session_id == session.id)
         summary_record = self._db.execute(stmt).scalar_one_or_none()
 
         if not summary:
             if summary_record is not None:
                 self._db.delete(summary_record)
+            session.summary_updated_at = None
             return
 
+        summary_timestamp = utcnow()
         if summary_record is None:
-            summary_record = SessionSummary(session_id=session_id, content=summary)
+            summary_record = SessionSummary(
+                session_id=session.id,
+                content=summary,
+                updated_at=summary_timestamp,
+            )
             self._db.add(summary_record)
-            return
+        else:
+            summary_record.content = summary
+            summary_record.updated_at = summary_timestamp
 
-        summary_record.content = summary
-        summary_record.updated_at = utcnow()
+        session.summary_updated_at = summary_timestamp
 
     def _to_memory_message(self, message: ChatMessage) -> MemoryMessage:
         if message.role not in {"user", "assistant", "system"}:
