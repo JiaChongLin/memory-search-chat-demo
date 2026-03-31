@@ -15,6 +15,7 @@ import {
   clearCurrentSessionSelection,
   clearNotice,
   getMessagesForSession,
+  getState,
   removeSessionData,
   setBusy,
   setCurrentProjectId,
@@ -41,14 +42,20 @@ import {
 
 export function createProjectSessionController({
   elements,
-  getBaseUrl,
-  getState,
-  refreshProjects,
-  refreshSessions,
   showTransientNotice,
   openConfirmModal,
   closeConfirmModal,
 }) {
+  let getBaseUrl = () => "http://127.0.0.1:8000";
+  let refreshProjects = async () => {};
+  let refreshSessions = async () => {};
+
+  function configureRuntime(runtime) {
+    getBaseUrl = runtime.getBaseUrl;
+    refreshProjects = runtime.refreshProjects;
+    refreshSessions = runtime.refreshSessions;
+  }
+
   function syncProjectSelection(projectId) {
     const state = getState();
     if (projectId === null || projectId === undefined) {
@@ -543,6 +550,7 @@ export function createProjectSessionController({
   }
 
   return {
+    configureRuntime,
     closeProjectModal,
     ensureSessionMessages,
     syncSelectedSessionDetail,

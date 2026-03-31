@@ -229,6 +229,23 @@ function renderNotice(state, elements) {
   elements.chatNotice.textContent = notice.message;
 }
 
+function resolveSafeSourceHref(rawUrl) {
+  if (!rawUrl) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(rawUrl, window.location.origin);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 function buildSourceNode(source) {
   const link = document.createElement("a");
   link.className = "source-card";
@@ -242,22 +259,12 @@ function buildSourceNode(source) {
   link.append(title, snippet);
 
   const rawUrl = typeof source?.url === "string" ? source.url.trim() : "";
-  if (!rawUrl) {
-    link.setAttribute("aria-disabled", "true");
-    link.tabIndex = -1;
+  const safeHref = resolveSafeSourceHref(rawUrl);
+  if (safeHref) {
+    link.href = safeHref;
+    link.target = "_blank";
+    link.rel = "noreferrer";
     return link;
-  }
-
-  try {
-    const parsed = new URL(rawUrl, window.location.origin);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      link.href = parsed.toString();
-      link.target = "_blank";
-      link.rel = "noreferrer";
-      return link;
-    }
-  } catch {
-    // Ignore malformed URLs and fall through to the disabled, non-clickable card.
   }
 
   link.setAttribute("aria-disabled", "true");

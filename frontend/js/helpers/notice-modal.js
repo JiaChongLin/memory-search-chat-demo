@@ -1,7 +1,9 @@
-﻿const NOTICE_AUTO_DISMISS_MS = 2600;
+﻿import { clearNotice, setNotice } from "../state.js";
+
+const NOTICE_AUTO_DISMISS_MS = 2600;
 const NOTICE_FADE_MS = 320;
 
-export function createNoticeModalHelpers({ elements, setNotice, clearNotice }) {
+export function createNoticeModalHelpers({ elements }) {
   const noticeTimers = new Map();
   let pendingConfirmResolve = null;
 

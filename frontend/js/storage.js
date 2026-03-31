@@ -49,7 +49,6 @@ function normalizeSidebarState(rawValue) {
 
 export function loadPersistedState() {
   return {
-    backendBaseUrl: DEFAULT_BACKEND_BASE_URL,
     currentProjectId: parseOptionalInt(
       localStorage.getItem(STORAGE_KEYS.currentProjectId),
     ),

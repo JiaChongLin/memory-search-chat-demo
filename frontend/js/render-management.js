@@ -273,9 +273,13 @@ function renderProjectSelectOptions(state) {
     return;
   }
 
+  const currentProjectId = state.selectedSessionDetail?.project_id ?? null;
+  const unassignedLabel =
+    currentProjectId === null ? "当前：未归属会话" : "移出项目，变成未归属会话";
+
   moveSelect.innerHTML = [
     '<option value="">选择目标项目</option>',
-    '<option value="__none__">移出项目，变成未归属会话</option>',
+    `<option value="__none__">${escapeHtml(unassignedLabel)}</option>`,
     ...state.projects.map(
       (project) =>
         `<option value="${project.id}">${escapeHtml(project.name)} (${escapeHtml(
@@ -283,6 +287,8 @@ function renderProjectSelectOptions(state) {
         )})</option>`,
     ),
   ].join("");
+
+  moveSelect.value = currentProjectId === null ? "__none__" : String(currentProjectId);
 }
 
 function renderNewChatMenu(state, elements) {
