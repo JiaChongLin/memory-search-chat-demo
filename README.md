@@ -162,3 +162,35 @@ pytest tests/test_context_rules.py tests/test_management_api.py tests/test_chat_
 本项目采用 [MIT License](./LICENSE)。
 
 
+
+## 会话层设计原则（补充）
+
+- `ChatMessage` 是 source of truth，真实历史以消息表为准。
+- `SessionSummary` 是 derived artifact，只是内部派生缓存，不是事实源。
+- `is_private` 是会话级可见性开关，而且是可逆的。
+- `is_private` 只影响“其他会话能否读取该会话”，不影响“该会话读取别人”。
+- 当前 summary 继续采用规则压缩，不把每轮摘要改成 LLM 调用。
+
+## 已实现的会话层能力（补充）
+
+- 会话元数据：`message_count`、`last_message_at`、`summary_updated_at`
+- 会话完整历史回读：`GET /api/sessions/{session_id}/messages`
+- 会话自动命名与手动改名
+- 会话私密性可逆切换：`PATCH /api/sessions/{session_id}` 支持更新 `title` 和 `is_private`
+- 前端可创建共享 / 私密会话，并可切换当前会话的私密性
+
+## 当前 summary 展示策略
+
+- summary 默认不作为主界面核心对象。
+- 前端当前只在调试/折叠区域里展示内部 summary，避免和真实消息历史并列成主对象。
+- 如果需要追溯真实对话，应以 `ChatMessage` 历史为准。
+
+## Session Layer Backlog
+
+- summary 校验与回源重建
+- 消息分页 / 懒加载
+- 会话搜索
+- 更强的摘要策略
+- summary 版本管理
+- 跨会话完整消息级读取（暂不做）
+- embedding memory / 全文检索（暂不做）

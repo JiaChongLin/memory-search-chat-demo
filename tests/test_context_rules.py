@@ -240,3 +240,38 @@ def test_archived_sessions_do_not_enter_external_context() -> None:
         engine.dispose()
         if db_path.exists():
             db_path.unlink()
+
+def test_is_private_toggle_takes_effect_immediately_for_context_reads() -> None:
+    engine, session_local, db_path = _build_db_session()
+    try:
+        with session_local() as db:
+            open_project = _create_project(db, "open-project", "open")
+            _create_session(db, "current", project_id=open_project.id, summary="current-summary")
+            toggled = _create_session(
+                db,
+                "toggle-me",
+                project_id=open_project.id,
+                is_private=False,
+                summary="toggle-summary",
+            )
+            db.commit()
+
+            initial_context = _resolve_context(db, "current")
+            initial_ids = {item.session_id for item in initial_context.related_summaries}
+            assert "toggle-me" in initial_ids
+
+            toggled.is_private = True
+            db.commit()
+            private_context = _resolve_context(db, "current")
+            private_ids = {item.session_id for item in private_context.related_summaries}
+            assert "toggle-me" not in private_ids
+
+            toggled.is_private = False
+            db.commit()
+            shared_again_context = _resolve_context(db, "current")
+            shared_again_ids = {item.session_id for item in shared_again_context.related_summaries}
+            assert "toggle-me" in shared_again_ids
+    finally:
+        engine.dispose()
+        if db_path.exists():
+            db_path.unlink()

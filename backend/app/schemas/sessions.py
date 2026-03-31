@@ -16,6 +16,7 @@ class SessionCreateRequest(BaseModel):
 
 class SessionUpdateRequest(BaseModel):
     title: Optional[str] = Field(default=None, max_length=255)
+    is_private: Optional[bool] = None
 
 
 class SessionProjectMoveRequest(BaseModel):
@@ -30,6 +31,9 @@ class SessionResponse(BaseModel):
     project_id: Optional[int] = None
     status: RecordStatus
     is_private: bool
+    last_message_at: Optional[datetime] = None
+    message_count: int = 0
+    summary_updated_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

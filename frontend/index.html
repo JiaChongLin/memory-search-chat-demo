@@ -14,7 +14,7 @@
             <p class="eyebrow">Stage 3</p>
             <h1>Memory Search</h1>
             <p class="sidebar-copy">
-              一个面向项目 / 会话 / 权限规则测试的静态 Web 控制台。左侧负责项目与会话导航，右侧负责当前会话聊天、摘要与调试信息。
+              一个面向项目 / 会话 / 权限规则测试的静态 Web 控制台。左侧负责项目与会话导航，右侧负责当前会话聊天与调试视图。
             </p>
           </div>
 
@@ -77,16 +77,17 @@
         </header>
 
         <section class="panel secondary-stack">
-          <details class="secondary-details" open>
-            <summary>会话摘要</summary>
+          <details class="secondary-details">
+            <summary>内部 summary（调试）</summary>
             <div class="secondary-body">
               <div class="mini-head">
-                <h3>当前 summary</h3>
+                <h3>内部记忆摘要</h3>
                 <span id="summaryBadge" class="badge neutral">无摘要</span>
               </div>
               <p id="summaryText" class="summary-text">
                 当前没有选中会话。请先在左侧导航中创建或选择会话。
               </p>
+              <p class="hint-text">ChatMessage 仍然是真实历史；这里的 summary 只是系统内部派生缓存，用于调试和记忆观察。</p>
             </div>
           </details>
 
@@ -182,7 +183,6 @@
       </div>
     </div>
 
-
     <div id="confirmModal" class="modal-shell hidden">
       <div class="modal-backdrop" data-close-confirm-modal="true"></div>
       <div class="modal-card confirm-modal-card">
@@ -218,4 +218,3 @@
     <script type="module" src="./js/main.js"></script>
   </body>
 </html>
-

@@ -1,4 +1,4 @@
-﻿import { getAccessModeLabel, getSessionTitle } from "../labels.js";
+﻿import { getAccessModeLabel, getPrivacyLabel, getSessionTitle } from "../labels.js";
 import {
   archiveSession,
   createProject,
@@ -266,13 +266,13 @@ export function createProjectSessionController({
     }
   }
 
-  async function createBlankSession(projectId = null) {
+  async function createBlankSession(projectId = null, isPrivate = false) {
     try {
       setBusy("sessions", true);
       const session = await createSession(getBaseUrl(), {
         title: null,
         project_id: projectId,
-        is_private: false,
+        is_private: isPrivate,
       });
       setCurrentSessionId(session.id);
       setSelectedSessionDetail(session);
@@ -282,7 +282,11 @@ export function createProjectSessionController({
       setNewChatMenuOpen(false);
       showTransientNotice(
         "sessions",
-        projectId === null ? "已创建未归属会话。" : "已在当前项目下创建新会话。",
+        isPrivate
+          ? "已创建私密会话。"
+          : projectId === null
+            ? "已创建未归属会话。"
+            : "已在当前项目下创建新会话。",
         "success",
       );
       await refreshSessions({ silent: true });
@@ -295,11 +299,7 @@ export function createProjectSessionController({
 
   function handleNewChatClick() {
     const state = getState();
-    if (state.selectedProjectDetail) {
-      setNewChatMenuOpen(!state.ui.newChatMenuOpen);
-      return;
-    }
-    createBlankSession(null);
+    setNewChatMenuOpen(!state.ui.newChatMenuOpen);
   }
 
   async function handleSessionSelect(sessionId) {
@@ -337,6 +337,29 @@ export function createProjectSessionController({
       await refreshSessions({ silent: true, loadMessages: false });
     } catch (error) {
       setNotice("sessions", `改名失败：${formatErrorMessage(error)}`, "danger");
+    }
+  }
+
+  async function handleToggleSessionPrivacy() {
+    const session = getState().selectedSessionDetail;
+    if (!session) {
+      setNotice("sessions", "当前没有选中会话。", "warning");
+      return;
+    }
+
+    try {
+      const updated = await updateSession(getBaseUrl(), session.id, {
+        is_private: !session.is_private,
+      });
+      setSelectedSessionDetail(updated);
+      setNotice(
+        "sessions",
+        `会话已切换为${getPrivacyLabel(updated.is_private)}。后续上下文解析会立即按新规则生效。`,
+        "success",
+      );
+      await refreshSessions({ silent: true, loadMessages: false });
+    } catch (error) {
+      setNotice("sessions", `更新私密性失败：${formatErrorMessage(error)}`, "danger");
     }
   }
 
@@ -473,8 +496,22 @@ export function createProjectSessionController({
       return;
     }
 
+    const createSessionButton = event.target.closest("[data-create-session-scope]");
+    if (createSessionButton) {
+      const scope = createSessionButton.dataset.createSessionScope;
+      const isPrivate = createSessionButton.dataset.createSessionPrivate === "true";
+      const projectId = scope === "current-project" ? getState().currentProjectId : null;
+      createBlankSession(projectId, isPrivate);
+      return;
+    }
+
     if (event.target.closest("#renameSessionButton")) {
       handleRenameSession();
+      return;
+    }
+
+    if (event.target.closest("#toggleSessionPrivacyButton")) {
+      handleToggleSessionPrivacy();
       return;
     }
 
@@ -526,17 +563,6 @@ export function createProjectSessionController({
 
     if (event.target.closest("#confirmAcceptButton")) {
       closeConfirmModal(true);
-      return;
-    }
-
-    if (event.target.closest("#createChatInProjectButton")) {
-      const projectId = getState().currentProjectId;
-      createBlankSession(projectId);
-      return;
-    }
-
-    if (event.target.closest("#createUnassignedChatButton")) {
-      createBlankSession(null);
       return;
     }
 

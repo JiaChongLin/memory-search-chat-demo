@@ -57,6 +57,16 @@ class ChatSession(Base):
     )
     status: Mapped[str] = mapped_column(String(20), default=STATUS_ACTIVE, index=True)
     is_private: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_message_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    summary_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,
