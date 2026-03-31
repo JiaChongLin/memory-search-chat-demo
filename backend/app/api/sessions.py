@@ -13,6 +13,7 @@ from backend.app.schemas.sessions import (
     SessionDeleteResponse,
     SessionProjectMoveRequest,
     SessionResponse,
+    SessionSummaryResponse,
     SessionUpdateRequest,
 )
 from backend.app.services.session_service import SessionService
@@ -65,6 +66,24 @@ def get_session(
 ) -> SessionResponse:
     chat_session = SessionService(db).get_session(session_id)
     return SessionResponse.model_validate(chat_session)
+
+
+@router.get(
+    "/{session_id}/summary",
+    response_model=SessionSummaryResponse,
+    summary="Get the derived summary for a session",
+    responses={404: {"model": ErrorResponse}},
+)
+def get_session_summary(
+    session_id: str,
+    db: Session = Depends(get_db),
+) -> SessionSummaryResponse:
+    summary, summary_updated_at = SessionService(db).get_session_summary(session_id)
+    return SessionSummaryResponse(
+        session_id=session_id,
+        summary=summary,
+        summary_updated_at=summary_updated_at,
+    )
 
 
 @router.get(

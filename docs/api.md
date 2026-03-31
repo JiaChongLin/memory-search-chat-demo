@@ -246,3 +246,21 @@
 - 向量库检索
 - 其他会话完整消息拼接
 - 更复杂的召回排序与打分
+
+### GET /api/sessions/{session_id}/summary
+
+返回当前会话的内部派生 summary，用于前端在刷新后恢复 summary 展示。
+
+示例响应：
+
+```json
+{
+  "session_id": "abc123",
+  "summary": "用户: ... | 助手: ...",
+  "summary_updated_at": "2026-03-31T12:34:56Z"
+}
+```
+
+说明：
+- `summary` 可能为 `null`，表示当前会话暂时还没有可用的内部摘要。
+- 该接口返回的是 `SessionSummary` 这份派生缓存，而不是事实源；真实历史仍以 `ChatMessage` 为准。

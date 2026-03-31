@@ -149,3 +149,17 @@
 - summary 版本管理
 - 跨会话完整消息级读取（暂不做）
 - embedding memory / 全文检索（暂不做）
+
+## 刷新恢复与调试快照补充
+
+- 当前前端刷新后会重新拉取会话列表，并优先通过后端接口恢复当前选中会话，而不是依赖本地持久化整份消息或摘要缓存。
+- 当前会话消息历史：`GET /api/sessions/{session_id}/messages`
+- 当前会话内部 summary：`GET /api/sessions/{session_id}/summary`
+- summary 会写回前端内存态 `summaryMap`，用于当前页显示；它不再作为长期本地缓存对象。
+- 调试面板快照仍然只在当前页面生命周期内保留；刷新后如果没有新的聊天响应，就会明确提示这是一份当前页临时信息。
+
+## 前端交互补充
+
+- 会话改名已从浏览器原生 `prompt` 切换为页面内轻量输入弹窗。
+- success / info 类型提示默认使用短暂显示后淡出的 transient notice。
+- warning / error 仍然保留常驻提示，避免排查问题时信息过快消失。

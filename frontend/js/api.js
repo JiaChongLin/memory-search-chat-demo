@@ -87,6 +87,10 @@ export function getSession(baseUrl, sessionId) {
   return requestJson(baseUrl, `/api/sessions/${sessionId}`, { method: "GET" });
 }
 
+export function getSessionSummary(baseUrl, sessionId) {
+  return requestJson(baseUrl, `/api/sessions/${sessionId}/summary`, { method: "GET" });
+}
+
 export function getSessionMessages(baseUrl, sessionId) {
   return requestJson(baseUrl, `/api/sessions/${sessionId}/messages`, { method: "GET" });
 }
