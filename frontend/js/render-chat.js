@@ -20,6 +20,14 @@ import {
   getSummaryForSession,
 } from "./state.js";
 
+const messageRenderCache = {
+  sessionId: null,
+  messagesRef: null,
+  messageCount: 0,
+  lastMessageKey: "",
+  emptyStateKey: "",
+};
+
 function formatTime(timestamp) {
   if (!timestamp) {
     return "";
@@ -304,33 +312,101 @@ function buildMessageNode(message, template) {
   return node;
 }
 
-function renderMessages(state, elements) {
-  const messages = state.currentSessionId ? getMessagesForCurrentSession() : [];
-  elements.messageList.innerHTML = "";
+function getMessageKey(message) {
+  return [
+    message?.role || "",
+    String(message?.timestamp || ""),
+    message?.content || "",
+    String(Array.isArray(message?.sources) ? message.sources.length : 0),
+    String(message?.debug?.related_summary_count ?? ""),
+  ].join("|");
+}
 
-  if (!messages.length) {
-    elements.chatEmptyState.hidden = false;
-    elements.chatEmptyState.innerHTML = state.currentSessionId
-      ? `
+function updateMessageRenderCache(sessionId, messages) {
+  messageRenderCache.sessionId = sessionId;
+  messageRenderCache.messagesRef = messages;
+  messageRenderCache.messageCount = messages.length;
+  messageRenderCache.lastMessageKey = messages.length
+    ? getMessageKey(messages[messages.length - 1])
+    : "";
+  messageRenderCache.emptyStateKey = sessionId ? "empty-session" : "empty-selection";
+}
+
+function renderEmptyState(state, elements) {
+  const sessionId = state.currentSessionId || null;
+  const emptyStateKey = sessionId ? "empty-session" : "empty-selection";
+  const needsUpdate =
+    messageRenderCache.sessionId !== sessionId ||
+    messageRenderCache.messageCount !== 0 ||
+    messageRenderCache.emptyStateKey !== emptyStateKey;
+
+  if (!needsUpdate) {
+    return;
+  }
+
+  elements.messageList.innerHTML = "";
+  elements.chatEmptyState.hidden = false;
+  elements.chatEmptyState.innerHTML = sessionId
+    ? `
         <div>
           <strong>这个会话还没有消息</strong>
           <span>从这里发出第一条消息，或继续把它当作一个新的讨论起点。</span>
         </div>
       `
-      : `
+    : `
         <div>
           <strong>请选择一个会话开始</strong>
           <span>左侧导航会按项目和未归属会话组织列表。选中会话后，右侧会切换到对应聊天主区。</span>
         </div>
       `;
+  updateMessageRenderCache(sessionId, []);
+}
+
+function renderMessages(state, elements) {
+  const sessionId = state.currentSessionId || null;
+  const messages = sessionId ? getMessagesForCurrentSession() : [];
+
+  if (!messages.length) {
+    renderEmptyState(state, elements);
+    return;
+  }
+
+  const lastMessageKey = getMessageKey(messages[messages.length - 1]);
+  const sameSession = messageRenderCache.sessionId === sessionId;
+  const sameArrayRef = messageRenderCache.messagesRef === messages;
+  const sameTail =
+    messageRenderCache.messageCount === messages.length &&
+    messageRenderCache.lastMessageKey === lastMessageKey;
+
+  // renderChat still runs on every state change, but the message list only
+  // updates when the selected session or its messages actually changed.
+  if (sameSession && sameArrayRef && sameTail) {
     return;
   }
 
   elements.chatEmptyState.hidden = true;
   elements.chatEmptyState.innerHTML = "";
+
+  const canAppendOnly =
+    sameSession &&
+    sameArrayRef &&
+    messages.length > messageRenderCache.messageCount &&
+    elements.messageList.childElementCount === messageRenderCache.messageCount;
+
+  if (canAppendOnly) {
+    for (let index = messageRenderCache.messageCount; index < messages.length; index += 1) {
+      elements.messageList.appendChild(buildMessageNode(messages[index], elements.messageTemplate));
+    }
+    updateMessageRenderCache(sessionId, messages);
+    elements.messageList.scrollTop = elements.messageList.scrollHeight;
+    return;
+  }
+
+  elements.messageList.innerHTML = "";
   messages.forEach((message) => {
     elements.messageList.appendChild(buildMessageNode(message, elements.messageTemplate));
   });
+  updateMessageRenderCache(sessionId, messages);
   elements.messageList.scrollTop = elements.messageList.scrollHeight;
 }
 
