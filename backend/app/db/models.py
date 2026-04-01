@@ -3,11 +3,20 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from backend.app.domain.constants import (
     PROJECT_ACCESS_OPEN,
+    SESSION_SUMMARY_KIND_WORKING_MEMORY,
     STATUS_ACTIVE,
 )
 
@@ -26,6 +35,7 @@ class Project(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    instruction: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     access_mode: Mapped[str] = mapped_column(String(32), default=PROJECT_ACCESS_OPEN)
     status: Mapped[str] = mapped_column(String(20), default=STATUS_ACTIVE, index=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -39,6 +49,11 @@ class Project(Base):
     )
 
     sessions: Mapped[list["ChatSession"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    stable_facts: Mapped[list["ProjectStableFact"]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -83,9 +98,8 @@ class ChatSession(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    summary: Mapped[Optional["SessionSummary"]] = relationship(
+    summaries: Mapped[list["SessionSummary"]] = relationship(
         back_populates="session",
-        uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
@@ -112,12 +126,19 @@ class ChatMessage(Base):
 
 class SessionSummary(Base):
     __tablename__ = "session_summaries"
+    __table_args__ = (
+        UniqueConstraint("session_id", "kind", name="uq_session_summaries_session_kind"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
         String(64),
         ForeignKey("chat_sessions.id", ondelete="CASCADE"),
-        unique=True,
+        index=True,
+    )
+    kind: Mapped[str] = mapped_column(
+        String(32),
+        default=SESSION_SUMMARY_KIND_WORKING_MEMORY,
         index=True,
     )
     content: Mapped[str] = mapped_column(Text)
@@ -127,4 +148,27 @@ class SessionSummary(Base):
         onupdate=utcnow,
     )
 
-    session: Mapped["ChatSession"] = relationship(back_populates="summary")
+    session: Mapped["ChatSession"] = relationship(back_populates="summaries")
+
+
+class ProjectStableFact(Base):
+    __tablename__ = "project_stable_facts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        index=True,
+    )
+    content: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default=STATUS_ACTIVE, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    project: Mapped["Project"] = relationship(back_populates="stable_facts")

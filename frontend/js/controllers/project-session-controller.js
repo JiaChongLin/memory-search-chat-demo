@@ -2,26 +2,33 @@
 import {
   archiveSession,
   createProject,
+  createProjectStableFact,
   createSession,
   deleteProject,
+  deleteProjectStableFact,
   deleteSession,
   getSession,
   getSessionMessages,
   getSessionSummary,
+  listProjectStableFacts,
   moveSession,
   updateProject,
+  updateProjectStableFact,
   updateSession,
 } from "../api.js";
 import {
   clearCurrentSessionSelection,
   clearNotice,
+  clearStableFactsForProject,
   getMessagesForSession,
+  getMemoryForSession,
+  getStableFactsForProject,
   getState,
-  getSummaryForSession,
   removeSessionData,
   setBusy,
   setCurrentProjectId,
   setCurrentSessionId,
+  setEditingStableFactId,
   setMessagesForSession,
   setNewChatMenuOpen,
   setNotice,
@@ -29,7 +36,8 @@ import {
   setProjectModalState,
   setSelectedProjectDetail,
   setSelectedSessionDetail,
-  setSummaryForSession,
+  setMemoryForSession,
+  setStableFactsForProject,
   toggleProjectSessionExpansion,
   toggleShowAllProjects,
   toggleShowAllUnassigned,
@@ -78,18 +86,60 @@ export function createProjectSessionController({
     clearCurrentSessionSelection();
   }
 
+  function resetStableFactEditor() {
+    if (elements.stableFactInput) {
+      elements.stableFactInput.value = "";
+    }
+    setEditingStableFactId(null);
+  }
+
   function closeProjectModal() {
-    setProjectModalState({ isOpen: false, mode: "create", projectId: null });
+    setProjectModalState({
+      isOpen: false,
+      mode: "create",
+      projectId: null,
+      stableFactId: null,
+    });
     resetProjectForm(elements);
+    resetStableFactEditor();
   }
 
   function openProjectCreateModal() {
     resetProjectForm(elements);
-    setProjectModalState({ isOpen: true, mode: "create", projectId: null });
+    resetStableFactEditor();
+    setProjectModalState({
+      isOpen: true,
+      mode: "create",
+      projectId: null,
+      stableFactId: null,
+    });
     setNewChatMenuOpen(false);
   }
 
-  function openProjectEditModal(projectId) {
+  async function loadProjectStableFacts(projectId, options = {}) {
+    if (!projectId) {
+      return [];
+    }
+
+    const force = Boolean(options.force);
+    const cached = getStableFactsForProject(projectId);
+    if (!force && cached.length) {
+      return cached;
+    }
+
+    try {
+      const facts = await listProjectStableFacts(getBaseUrl(), projectId, {
+        include_archived: true,
+      });
+      setStableFactsForProject(projectId, facts);
+      return facts;
+    } catch (error) {
+      setNotice("projects", `加载 stable facts 失败：${formatErrorMessage(error)}`, "warning");
+      return cached;
+    }
+  }
+
+  async function openProjectEditModal(projectId) {
     const state = getState();
     const project = state.projects.find((item) => item.id === projectId) || null;
     if (!project) {
@@ -98,11 +148,19 @@ export function createProjectSessionController({
     }
 
     elements.projectNameInput.value = project.name || "";
+    elements.projectInstructionInput.value = project.instruction || "";
     elements.projectDescriptionInput.value = project.description || "";
     elements.projectAccessSelect.value = project.access_mode;
-    setProjectModalState({ isOpen: true, mode: "edit", projectId: project.id });
+    resetStableFactEditor();
+    setProjectModalState({
+      isOpen: true,
+      mode: "edit",
+      projectId: project.id,
+      stableFactId: null,
+    });
     setNewChatMenuOpen(false);
     clearNotice("projects");
+    await loadProjectStableFacts(project.id, { force: true });
   }
 
   async function ensureSessionMessages(sessionId, options = {}) {
@@ -141,23 +199,23 @@ export function createProjectSessionController({
     }
 
     const force = Boolean(options.force);
-    if (!force && getSummaryForSession(sessionId)) {
+    if (!force && getMemoryForSession(sessionId)) {
       return;
     }
 
     try {
       const payload = await getSessionSummary(getBaseUrl(), sessionId);
-      setSummaryForSession(sessionId, payload.summary || null);
+      setMemoryForSession(sessionId, payload);
     } catch (error) {
       if (error.status === 404) {
         removeSessionData(sessionId);
         if (getState().currentSessionId === sessionId) {
           clearSessionSelection();
         }
-        setNotice("sessions", "该会话不存在，无法读取内部 summary。", "warning");
+        setNotice("sessions", "该会话不存在，无法读取会话记忆。", "warning");
         return;
       }
-      setNotice("sessions", `加载会话 summary 失败：${formatErrorMessage(error)}`, "warning");
+      setNotice("sessions", `加载会话记忆失败：${formatErrorMessage(error)}`, "warning");
     }
   }
 
@@ -192,6 +250,7 @@ export function createProjectSessionController({
     const state = getState();
     const payload = {
       name: elements.projectNameInput.value.trim(),
+      instruction: elements.projectInstructionInput.value.trim() || null,
       description: elements.projectDescriptionInput.value.trim() || null,
     };
 
@@ -242,6 +301,133 @@ export function createProjectSessionController({
     }
   }
 
+  async function handleStableFactSubmit() {
+    const state = getState();
+    const projectId = state.ui.editingProjectId;
+    if (state.ui.projectModalMode !== "edit" || !projectId) {
+      setNotice("projects", "请先创建项目，再管理 stable facts。", "warning");
+      return;
+    }
+
+    const content = elements.stableFactInput?.value.trim() || "";
+    if (!content) {
+      setNotice("projects", "stable fact 内容不能为空。", "warning");
+      return;
+    }
+
+    try {
+      setBusy("projects", true);
+      if (state.ui.editingStableFactId) {
+        await updateProjectStableFact(getBaseUrl(), projectId, state.ui.editingStableFactId, {
+          content,
+        });
+        showTransientNotice("projects", "stable fact 已更新。", "success");
+      } else {
+        await createProjectStableFact(getBaseUrl(), projectId, { content });
+        showTransientNotice("projects", "stable fact 已保存。", "success");
+      }
+      resetStableFactEditor();
+      await loadProjectStableFacts(projectId, { force: true });
+    } catch (error) {
+      setNotice("projects", `保存 stable fact 失败：${formatErrorMessage(error)}`, "danger");
+    } finally {
+      setBusy("projects", false);
+    }
+  }
+
+  function handleStableFactEdit(factId) {
+    const state = getState();
+    const projectId = state.ui.editingProjectId;
+    const facts = getStableFactsForProject(projectId);
+    const fact = facts.find((item) => item.id === factId) || null;
+    if (!fact) {
+      setNotice("projects", "目标 stable fact 不存在。", "warning");
+      return;
+    }
+
+    if (elements.stableFactInput) {
+      elements.stableFactInput.value = fact.content;
+      elements.stableFactInput.focus();
+    }
+    setEditingStableFactId(fact.id);
+    clearNotice("projects");
+  }
+
+  function handleStableFactCancelEdit() {
+    resetStableFactEditor();
+    clearNotice("projects");
+  }
+
+  async function handleStableFactToggle(factId) {
+    const state = getState();
+    const projectId = state.ui.editingProjectId;
+    if (!projectId) {
+      return;
+    }
+
+    const facts = getStableFactsForProject(projectId);
+    const fact = facts.find((item) => item.id === factId) || null;
+    if (!fact) {
+      setNotice("projects", "目标 stable fact 不存在。", "warning");
+      return;
+    }
+
+    const nextStatus = fact.status === "active" ? "archived" : "active";
+    try {
+      setBusy("projects", true);
+      await updateProjectStableFact(getBaseUrl(), projectId, factId, { status: nextStatus });
+      if (state.ui.editingStableFactId === factId && nextStatus === "archived") {
+        resetStableFactEditor();
+      }
+      showTransientNotice(
+        "projects",
+        nextStatus === "active" ? "stable fact 已重新启用。" : "stable fact 已停用。",
+        "success",
+      );
+      await loadProjectStableFacts(projectId, { force: true });
+    } catch (error) {
+      setNotice("projects", `更新 stable fact 状态失败：${formatErrorMessage(error)}`, "danger");
+    } finally {
+      setBusy("projects", false);
+    }
+  }
+
+  async function handleStableFactDelete(factId) {
+    const state = getState();
+    const projectId = state.ui.editingProjectId;
+    if (!projectId) {
+      return;
+    }
+
+    const facts = getStableFactsForProject(projectId);
+    const fact = facts.find((item) => item.id === factId) || null;
+    const confirmed = await openConfirmModal({
+      title: "删除 stable fact",
+      body: fact
+        ? `确认删除这条 stable fact？\n\n${fact.content}`
+        : "确认删除这条 stable fact？",
+      confirmLabel: "确认删除",
+      confirmVariant: "danger",
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setBusy("projects", true);
+      await deleteProjectStableFact(getBaseUrl(), projectId, factId);
+      if (state.ui.editingStableFactId === factId) {
+        resetStableFactEditor();
+      }
+      showTransientNotice("projects", "stable fact 已删除。", "warning");
+      await loadProjectStableFacts(projectId, { force: true });
+    } catch (error) {
+      setNotice("projects", `删除 stable fact 失败：${formatErrorMessage(error)}`, "danger");
+    } finally {
+      setBusy("projects", false);
+    }
+  }
+
   function handleProjectSelect(projectId) {
     const state = getState();
     const isCurrent = state.currentProjectId === projectId;
@@ -265,8 +451,8 @@ export function createProjectSessionController({
     const confirmed = await openConfirmModal({
       title: "删除项目",
       body: project
-        ? `确认删除项目“${project.name}”？项目内会话、消息和摘要会一起删除。`
-        : "确认删除这个项目？项目内会话、消息和摘要会一起删除。",
+        ? `确认删除项目“${project.name}”？项目内会话、消息、派生记忆和 stable facts 会一起删除。`
+        : "确认删除这个项目？项目内会话、消息、派生记忆和 stable facts 会一起删除。",
       confirmLabel: "确认删除",
       confirmVariant: "danger",
     });
@@ -280,6 +466,7 @@ export function createProjectSessionController({
 
     try {
       const response = await deleteProject(getBaseUrl(), projectId);
+      clearStableFactsForProject(projectId);
       if (deletingCurrentProject) {
         setCurrentProjectId(null);
         setSelectedProjectDetail(null);
@@ -307,7 +494,7 @@ export function createProjectSessionController({
       });
       setCurrentSessionId(session.id);
       setSelectedSessionDetail(session);
-      setSummaryForSession(session.id, null);
+      setMemoryForSession(session.id, null);
       setMessagesForSession(session.id, []);
       syncProjectSelection(session.project_id);
       setNewChatMenuOpen(false);
@@ -423,8 +610,8 @@ export function createProjectSessionController({
     const confirmed = await openConfirmModal({
       title: "删除会话",
       body: session?.title
-        ? `确认删除会话“${getSessionTitle(session.title)}”？消息和摘要会一起删除。`
-        : "确认删除这个会话？消息和摘要会一起删除。",
+        ? `确认删除会话“${getSessionTitle(session.title)}”？消息和派生记忆会一起删除。`
+        : "确认删除这个会话？消息和派生记忆会一起删除。",
       confirmLabel: "确认删除",
       confirmVariant: "danger",
     });
@@ -523,6 +710,33 @@ export function createProjectSessionController({
       return;
     }
 
+    const stableFactEdit = event.target.closest("[data-stable-fact-edit]");
+    if (stableFactEdit) {
+      const factId = Number.parseInt(stableFactEdit.dataset.stableFactEdit, 10);
+      if (!Number.isNaN(factId)) {
+        handleStableFactEdit(factId);
+      }
+      return;
+    }
+
+    const stableFactToggle = event.target.closest("[data-stable-fact-toggle]");
+    if (stableFactToggle) {
+      const factId = Number.parseInt(stableFactToggle.dataset.stableFactToggle, 10);
+      if (!Number.isNaN(factId)) {
+        handleStableFactToggle(factId);
+      }
+      return;
+    }
+
+    const stableFactDelete = event.target.closest("[data-stable-fact-delete]");
+    if (stableFactDelete) {
+      const factId = Number.parseInt(stableFactDelete.dataset.stableFactDelete, 10);
+      if (!Number.isNaN(factId)) {
+        handleStableFactDelete(factId);
+      }
+      return;
+    }
+
     const projectSelect = event.target.closest("[data-project-select]");
     if (projectSelect) {
       const projectId = Number.parseInt(projectSelect.dataset.projectSelect, 10);
@@ -583,6 +797,16 @@ export function createProjectSessionController({
 
     if (event.target.closest("#openProjectModalButton")) {
       openProjectCreateModal();
+      return;
+    }
+
+    if (event.target.closest("#stableFactSubmitButton")) {
+      handleStableFactSubmit();
+      return;
+    }
+
+    if (event.target.closest("#stableFactCancelButton")) {
+      handleStableFactCancelEdit();
       return;
     }
 

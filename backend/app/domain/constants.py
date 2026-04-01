@@ -31,7 +31,15 @@ RELATED_SUMMARY_SOURCE_SCOPES = (
     RELATED_SUMMARY_SOURCE_EXTERNAL,
 )
 
+SESSION_SUMMARY_KIND_WORKING_MEMORY = "working_memory"
+SESSION_SUMMARY_KIND_SESSION_DIGEST = "session_digest"
+SESSION_SUMMARY_KINDS = (
+    SESSION_SUMMARY_KIND_WORKING_MEMORY,
+    SESSION_SUMMARY_KIND_SESSION_DIGEST,
+)
+
 ProjectAccessMode = Literal["open", "project_only"]
 RecordStatus = Literal["active", "archived"]
 SessionVisibilityMode = Literal["shared", "private"]
 RelatedSummarySourceScope = Literal["project", "external"]
+SessionSummaryKind = Literal["working_memory", "session_digest"]

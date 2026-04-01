@@ -21,8 +21,9 @@ const state = {
   backendBaseUrl: DEFAULT_BACKEND_BASE_URL,
   currentProjectId: persisted.currentProjectId,
   currentSessionId: persisted.currentSessionId,
-  summaryMap: {},
+  memoryMap: {},
   messageMap: {},
+  stableFactMap: {},
   chatDebugMap: {},
   projects: [],
   sessions: [],
@@ -61,6 +62,7 @@ const state = {
     projectModalOpen: false,
     projectModalMode: "create",
     editingProjectId: null,
+    editingStableFactId: null,
     newChatMenuOpen: false,
   },
 };
@@ -124,11 +126,18 @@ export function getMessagesForSession(sessionId) {
   return Array.isArray(state.messageMap[key]) ? state.messageMap[key] : [];
 }
 
-export function getSummaryForSession(sessionId) {
+export function getMemoryForSession(sessionId) {
   if (!sessionId) {
     return null;
   }
-  return state.summaryMap[sessionId] || null;
+  return state.memoryMap[sessionId] || null;
+}
+
+export function getStableFactsForProject(projectId) {
+  if (!projectId) {
+    return [];
+  }
+  return Array.isArray(state.stableFactMap[projectId]) ? state.stableFactMap[projectId] : [];
 }
 
 export function getDebugForSession(sessionId) {
@@ -239,18 +248,51 @@ export function clearNotice(scope) {
   setNotice(scope, null);
 }
 
-export function setSummaryForSession(sessionId, summary) {
+export function setMemoryForSession(sessionId, memory) {
   if (!sessionId) {
     return;
   }
 
   commit((draft) => {
-    if (summary) {
-      draft.summaryMap[sessionId] = summary;
+    const nextMemory = memory
+      ? {
+          working_memory: memory.working_memory || null,
+          session_digest: memory.session_digest || null,
+        }
+      : null;
+
+    if (nextMemory && (nextMemory.working_memory || nextMemory.session_digest)) {
+      draft.memoryMap[sessionId] = nextMemory;
     } else {
-      delete draft.summaryMap[sessionId];
+      delete draft.memoryMap[sessionId];
     }
   });
+}
+
+export function setStableFactsForProject(projectId, facts) {
+  if (!projectId) {
+    return;
+  }
+
+  commit(
+    (draft) => {
+      draft.stableFactMap[projectId] = Array.isArray(facts) ? facts : [];
+    },
+    false,
+  );
+}
+
+export function clearStableFactsForProject(projectId) {
+  if (!projectId) {
+    return;
+  }
+
+  commit(
+    (draft) => {
+      delete draft.stableFactMap[projectId];
+    },
+    false,
+  );
 }
 
 export function setMessagesForSession(sessionId, messages) {
@@ -280,7 +322,7 @@ export function removeSessionData(sessionId) {
 
   commit((draft) => {
     delete draft.messageMap[sessionId];
-    delete draft.summaryMap[sessionId];
+    delete draft.memoryMap[sessionId];
     delete draft.chatDebugMap[sessionId];
   });
 }
@@ -339,7 +381,7 @@ export function toggleProjectSessionExpansion(projectId) {
   });
 }
 
-export function setProjectModalState({ isOpen, mode, projectId }) {
+export function setProjectModalState({ isOpen, mode, projectId, stableFactId }) {
   commit(
     (draft) => {
       if (typeof isOpen === "boolean") {
@@ -351,6 +393,9 @@ export function setProjectModalState({ isOpen, mode, projectId }) {
       if (projectId !== undefined) {
         draft.ui.editingProjectId = projectId;
       }
+      if (stableFactId !== undefined) {
+        draft.ui.editingStableFactId = stableFactId;
+      }
     },
     false,
   );
@@ -361,7 +406,12 @@ export function setProjectModalOpen(isOpen) {
     isOpen: Boolean(isOpen),
     mode: isOpen ? state.ui.projectModalMode : "create",
     projectId: isOpen ? state.ui.editingProjectId : null,
+    stableFactId: isOpen ? state.ui.editingStableFactId : null,
   });
+}
+
+export function setEditingStableFactId(stableFactId) {
+  setProjectModalState({ stableFactId });
 }
 
 export function setNewChatMenuOpen(isOpen) {
@@ -377,5 +427,3 @@ export function setNewChatMenuOpen(isOpen) {
     false,
   );
 }
-
-

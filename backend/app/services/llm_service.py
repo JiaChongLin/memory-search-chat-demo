@@ -6,13 +6,14 @@ from typing import Optional
 from urllib import error, request
 
 from backend.app.core.config import Settings
+from backend.app.services.context_resolver import RelatedSessionDigest
 from backend.app.services.memory_service import MemoryMessage
 from backend.app.services.search_service import SearchResult
 
 
 SYSTEM_PROMPT = (
     "你是一个用于 demo 的聊天助手。"
-    "请基于用户输入、会话历史、会话摘要和搜索上下文生成简洁回答。"
+    "请基于用户输入、项目级指令、项目 stable facts、会话历史、当前会话工作记忆、相关会话摘要和搜索上下文生成简洁回答。"
     "如果搜索结果为空，就不要假装引用了实时信息；如果信息不足，可以明确说明。"
 )
 
@@ -34,14 +35,24 @@ class LLMService:
         self,
         user_message: str,
         history: list[MemoryMessage],
-        session_summary: Optional[str] = None,
+        stable_facts: Optional[list[str]] = None,
+        working_memory: Optional[str] = None,
+        related_session_digests: Optional[list[RelatedSessionDigest]] = None,
+        project_name: Optional[str] = None,
+        project_instruction: Optional[str] = None,
         search_results: Optional[list[SearchResult]] = None,
     ) -> LLMReply:
         normalized_search_results = search_results or []
+        normalized_related_digests = related_session_digests or []
+        normalized_stable_facts = stable_facts or []
         messages = self._build_messages(
             user_message=user_message,
             history=history,
-            session_summary=session_summary,
+            stable_facts=normalized_stable_facts,
+            working_memory=working_memory,
+            related_session_digests=normalized_related_digests,
+            project_name=project_name,
+            project_instruction=project_instruction,
             search_results=normalized_search_results,
         )
 
@@ -49,7 +60,11 @@ class LLMService:
             return self._build_fallback_reply(
                 user_message=user_message,
                 history=history,
-                session_summary=session_summary,
+                stable_facts=normalized_stable_facts,
+                working_memory=working_memory,
+                related_session_digests=normalized_related_digests,
+                project_name=project_name,
+                project_instruction=project_instruction,
                 search_results=normalized_search_results,
                 reason="missing_api_key",
             )
@@ -62,7 +77,11 @@ class LLMService:
             return self._build_fallback_reply(
                 user_message=user_message,
                 history=history,
-                session_summary=session_summary,
+                stable_facts=normalized_stable_facts,
+                working_memory=working_memory,
+                related_session_digests=normalized_related_digests,
+                project_name=project_name,
+                project_instruction=project_instruction,
                 search_results=normalized_search_results,
                 reason=f"unsupported_provider:{self._settings.llm_provider}",
             )
@@ -76,7 +95,11 @@ class LLMService:
             return self._build_fallback_reply(
                 user_message=user_message,
                 history=history,
-                session_summary=session_summary,
+                stable_facts=normalized_stable_facts,
+                working_memory=working_memory,
+                related_session_digests=normalized_related_digests,
+                project_name=project_name,
+                project_instruction=project_instruction,
                 search_results=normalized_search_results,
                 reason=f"provider_request_failed:{exc}",
             )
@@ -86,7 +109,11 @@ class LLMService:
             return self._build_fallback_reply(
                 user_message=user_message,
                 history=history,
-                session_summary=session_summary,
+                stable_facts=normalized_stable_facts,
+                working_memory=working_memory,
+                related_session_digests=normalized_related_digests,
+                project_name=project_name,
+                project_instruction=project_instruction,
                 search_results=normalized_search_results,
                 reason=f"unexpected_error:{exc}",
             )
@@ -95,16 +122,36 @@ class LLMService:
         self,
         user_message: str,
         history: list[MemoryMessage],
-        session_summary: Optional[str],
+        stable_facts: list[str],
+        working_memory: Optional[str],
+        related_session_digests: list[RelatedSessionDigest],
+        project_name: Optional[str],
+        project_instruction: Optional[str],
         search_results: list[SearchResult],
     ) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-        if session_summary:
+        project_context = self._render_project_context(project_name, project_instruction)
+        if project_context:
+            messages.append({"role": "system", "content": project_context})
+
+        stable_facts_context = self._render_stable_facts_context(stable_facts)
+        if stable_facts_context:
+            messages.append({"role": "system", "content": stable_facts_context})
+
+        if working_memory:
             messages.append(
                 {
                     "role": "system",
-                    "content": f"会话摘要：\n{session_summary}",
+                    "content": f"当前会话 working_memory：\n{working_memory}",
+                }
+            )
+
+        if related_session_digests:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": self._render_related_session_digests(related_session_digests),
                 }
             )
 
@@ -122,6 +169,42 @@ class LLMService:
         messages.append({"role": "user", "content": user_message})
         return messages
 
+    def _render_project_context(
+        self,
+        project_name: Optional[str],
+        project_instruction: Optional[str],
+    ) -> Optional[str]:
+        if not project_name and not project_instruction:
+            return None
+
+        lines = ["当前会话所属项目信息："]
+        if project_name:
+            lines.append(f"项目名称：{project_name}")
+        if project_instruction:
+            lines.append(f"项目级 instruction：{project_instruction}")
+        return "\n".join(lines)
+
+    def _render_stable_facts_context(self, stable_facts: list[str]) -> Optional[str]:
+        if not stable_facts:
+            return None
+
+        lines = ["当前项目 active stable facts / saved memories："]
+        for index, item in enumerate(stable_facts, start=1):
+            lines.append(f"{index}. {item}")
+        return "\n".join(lines)
+
+    def _render_related_session_digests(
+        self,
+        related_session_digests: list[RelatedSessionDigest],
+    ) -> str:
+        lines = ["以下是其他可读会话的 session_digest："]
+        for index, item in enumerate(related_session_digests, start=1):
+            source_label = "同项目" if item.source_scope == "project" else "外部可访问"
+            lines.append(
+                f"{index}. {source_label}会话《{item.session_title}》({item.session_id[:8]})：{item.content}"
+            )
+        return "\n".join(lines)
+
     def _render_search_context(self, search_results: list[SearchResult]) -> str:
         lines = ["以下是可供参考的联网搜索结果："]
         for index, result in enumerate(search_results, start=1):
@@ -135,7 +218,11 @@ class LLMService:
         self,
         user_message: str,
         history: list[MemoryMessage],
-        session_summary: Optional[str],
+        stable_facts: list[str],
+        working_memory: Optional[str],
+        related_session_digests: list[RelatedSessionDigest],
+        project_name: Optional[str],
+        project_instruction: Optional[str],
         search_results: list[SearchResult],
         reason: str,
     ) -> LLMReply:
@@ -144,11 +231,21 @@ class LLMService:
             f"用户消息：{user_message}",
         ]
 
+        if project_name:
+            parts.append(f"当前项目：{project_name}")
+        if project_instruction:
+            parts.append(f"项目级 instruction：{project_instruction}")
+        if stable_facts:
+            parts.append(f"项目 stable facts 数量：{len(stable_facts)}")
+
         if history:
             parts.append(f"已读取最近上下文条数：{len(history)}")
 
-        if session_summary:
-            parts.append(f"当前会话摘要：{session_summary}")
+        if working_memory:
+            parts.append(f"当前会话 working_memory：{working_memory}")
+
+        if related_session_digests:
+            parts.append(f"相关 session_digest 数量：{len(related_session_digests)}")
 
         if search_results:
             parts.append(f"当前搜索结果数量：{len(search_results)}")

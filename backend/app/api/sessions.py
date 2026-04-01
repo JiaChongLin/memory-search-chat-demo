@@ -71,17 +71,20 @@ def get_session(
 @router.get(
     "/{session_id}/summary",
     response_model=SessionSummaryResponse,
-    summary="Get the derived summary for a session",
+    summary="Get derived memory state for a session",
     responses={404: {"model": ErrorResponse}},
 )
 def get_session_summary(
     session_id: str,
     db: Session = Depends(get_db),
 ) -> SessionSummaryResponse:
-    summary, summary_updated_at = SessionService(db).get_session_summary(session_id)
+    working_memory, session_digest, summary_updated_at = SessionService(db).get_session_summary(
+        session_id
+    )
     return SessionSummaryResponse(
         session_id=session_id,
-        summary=summary,
+        working_memory=working_memory,
+        session_digest=session_digest,
         summary_updated_at=summary_updated_at,
     )
 

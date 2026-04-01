@@ -40,7 +40,8 @@ class SessionResponse(BaseModel):
 
 class SessionSummaryResponse(BaseModel):
     session_id: str
-    summary: Optional[str] = None
+    working_memory: Optional[str] = None
+    session_digest: Optional[str] = None
     summary_updated_at: Optional[datetime] = None
 
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from backend.app.db.models import ChatSession, Project, SessionSummary
@@ -13,6 +13,7 @@ from backend.app.domain.constants import (
     PROJECT_ACCESS_PROJECT_ONLY,
     RELATED_SUMMARY_SOURCE_EXTERNAL,
     RELATED_SUMMARY_SOURCE_PROJECT,
+    SESSION_SUMMARY_KIND_SESSION_DIGEST,
     ProjectAccessMode,
     RelatedSummarySourceScope,
     STATUS_ACTIVE,
@@ -22,11 +23,13 @@ from backend.app.services.memory_service import MemoryMessage, MemoryService
 
 
 MAX_RELATED_SUMMARIES = 8
+DEFAULT_SESSION_TITLE = "未命名会话"
 
 
 @dataclass
-class RelatedSummary:
+class RelatedSessionDigest:
     session_id: str
+    session_title: str
     project_id: Optional[int]
     content: str
     source_scope: RelatedSummarySourceScope
@@ -35,9 +38,12 @@ class RelatedSummary:
 @dataclass
 class ResolvedContext:
     recent_messages: list[MemoryMessage]
-    context_summary: Optional[str]
+    working_memory: Optional[str]
     context_scope: ProjectAccessMode
-    related_summaries: list[RelatedSummary]
+    related_session_digests: list[RelatedSessionDigest]
+    stable_facts: list[str]
+    project_name: Optional[str] = None
+    project_instruction: Optional[str] = None
 
 
 class ContextResolver:
@@ -55,58 +61,71 @@ class ContextResolver:
     ) -> ResolvedContext:
         current_session = self._get_current_session(session_id, allow_missing=allow_missing)
         recent_messages = self._memory_service.get_recent_messages(session_id)
-        current_summary = self._memory_service.get_summary(session_id)
+        current_working_memory = self._memory_service.get_working_memory(session_id)
 
         if current_session is None:
             current_session = ChatSession(id=session_id, status=STATUS_ACTIVE, is_private=False)
 
         context_scope = self._resolve_context_scope(current_session)
-        related_summaries = self.get_accessible_summaries(current_session)
+        related_session_digests = self.get_accessible_session_digests(current_session)
+        project_name, project_instruction = self._resolve_project_prompt_context(current_session)
+        stable_facts = self._resolve_project_stable_facts(current_session)
 
         return ResolvedContext(
             recent_messages=recent_messages,
-            context_summary=self._compose_context_summary(
-                current_summary=current_summary,
-                related_summaries=related_summaries,
-            ),
+            working_memory=current_working_memory,
             context_scope=context_scope,
-            related_summaries=related_summaries,
+            related_session_digests=related_session_digests,
+            stable_facts=stable_facts,
+            project_name=project_name,
+            project_instruction=project_instruction,
         )
 
-    def get_accessible_summaries(self, current_session: ChatSession) -> list[RelatedSummary]:
-        stmt = self._build_summary_candidate_query(current_session)
+    def get_accessible_session_digests(
+        self,
+        current_session: ChatSession,
+    ) -> list[RelatedSessionDigest]:
+        stmt = self._build_digest_candidate_query(current_session)
         candidates = list(self._db.scalars(stmt).unique())
 
-        same_project_items: list[RelatedSummary] = []
-        external_items: list[RelatedSummary] = []
+        same_project_items: list[RelatedSessionDigest] = []
+        external_items: list[RelatedSessionDigest] = []
         can_read_external = self._can_read_external(current_session)
 
-        # SQL handles candidate-local filters that do not depend on the current
-        # session. We keep current-session-dependent boundary checks in Python so
-        # the open/project_only semantics and same-project vs external grouping
-        # stay explicit and easy to verify.
         for candidate in candidates:
             if self._is_same_project(current_session, candidate):
                 same_project_items.append(
-                    self._to_related_summary(candidate, RELATED_SUMMARY_SOURCE_PROJECT)
+                    self._to_related_session_digest(
+                        candidate,
+                        RELATED_SUMMARY_SOURCE_PROJECT,
+                    )
                 )
                 continue
 
             if can_read_external and self._is_externally_visible(candidate):
                 external_items.append(
-                    self._to_related_summary(candidate, RELATED_SUMMARY_SOURCE_EXTERNAL)
+                    self._to_related_session_digest(
+                        candidate,
+                        RELATED_SUMMARY_SOURCE_EXTERNAL,
+                    )
                 )
 
         return (same_project_items + external_items)[:MAX_RELATED_SUMMARIES]
 
-    def _build_summary_candidate_query(self, current_session: ChatSession):
+    def _build_digest_candidate_query(self, current_session: ChatSession):
         return (
             select(ChatSession)
-            .join(SessionSummary, ChatSession.id == SessionSummary.session_id)
+            .join(
+                SessionSummary,
+                and_(
+                    ChatSession.id == SessionSummary.session_id,
+                    SessionSummary.kind == SESSION_SUMMARY_KIND_SESSION_DIGEST,
+                ),
+            )
             .outerjoin(Project, ChatSession.project_id == Project.id)
             .options(
                 joinedload(ChatSession.project),
-                joinedload(ChatSession.summary),
+                joinedload(ChatSession.summaries),
             )
             .where(
                 ChatSession.id != current_session.id,
@@ -127,8 +146,8 @@ class ContextResolver:
         stmt = (
             select(ChatSession)
             .options(
-                joinedload(ChatSession.project),
-                joinedload(ChatSession.summary),
+                joinedload(ChatSession.project).joinedload(Project.stable_facts),
+                joinedload(ChatSession.summaries),
             )
             .where(ChatSession.id == session_id)
         )
@@ -160,6 +179,28 @@ class ContextResolver:
             return PROJECT_ACCESS_PROJECT_ONLY
         return PROJECT_ACCESS_OPEN
 
+    def _resolve_project_prompt_context(
+        self,
+        current_session: ChatSession,
+    ) -> tuple[Optional[str], Optional[str]]:
+        project = current_session.project
+        if project is None or project.status != STATUS_ACTIVE:
+            return None, None
+        return project.name, project.instruction
+
+    def _resolve_project_stable_facts(self, current_session: ChatSession) -> list[str]:
+        project = current_session.project
+        if project is None or project.status != STATUS_ACTIVE:
+            return []
+
+        active_facts = [
+            fact
+            for fact in project.stable_facts
+            if fact.status == STATUS_ACTIVE and fact.content and fact.content.strip()
+        ]
+        active_facts.sort(key=lambda item: (item.updated_at, item.id), reverse=True)
+        return [fact.content for fact in active_facts]
+
     def _can_read_external(self, current_session: ChatSession) -> bool:
         return self._resolve_context_scope(current_session) == PROJECT_ACCESS_OPEN
 
@@ -178,38 +219,21 @@ class ContextResolver:
             return False
         return candidate_project.access_mode == PROJECT_ACCESS_OPEN
 
-    def _to_related_summary(
+    def _to_related_session_digest(
         self,
         candidate: ChatSession,
         source_scope: RelatedSummarySourceScope,
-    ) -> RelatedSummary:
-        return RelatedSummary(
+    ) -> RelatedSessionDigest:
+        return RelatedSessionDigest(
             session_id=candidate.id,
+            session_title=(candidate.title or DEFAULT_SESSION_TITLE).strip() or DEFAULT_SESSION_TITLE,
             project_id=candidate.project_id,
-            content=candidate.summary.content if candidate.summary else "",
+            content=self._get_summary_content(candidate, SESSION_SUMMARY_KIND_SESSION_DIGEST) or "",
             source_scope=source_scope,
         )
 
-    def _compose_context_summary(
-        self,
-        current_summary: Optional[str],
-        related_summaries: list[RelatedSummary],
-    ) -> Optional[str]:
-        parts: list[str] = []
-
-        if current_summary:
-            parts.append(f"当前会话摘要：\n{current_summary}")
-
-        if related_summaries:
-            lines = ["可访问的相关历史摘要："]
-            for index, item in enumerate(related_summaries, start=1):
-                source_label = (
-                    "同项目"
-                    if item.source_scope == RELATED_SUMMARY_SOURCE_PROJECT
-                    else "外部可访问"
-                )
-                lines.append(f"{index}. {source_label}会话 {item.session_id[:8]}：{item.content}")
-            parts.append("\n".join(lines))
-
-        combined = "\n\n".join(parts).strip()
-        return combined or None
+    def _get_summary_content(self, session: ChatSession, kind: str) -> Optional[str]:
+        for record in session.summaries:
+            if record.kind == kind:
+                return record.content
+        return None
