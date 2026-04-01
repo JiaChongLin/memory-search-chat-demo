@@ -76,6 +76,30 @@ export function deleteProject(baseUrl, projectId) {
   });
 }
 
+export function listProjectStableFacts(baseUrl, projectId, query = {}) {
+  return requestJson(baseUrl, `/api/projects/${projectId}/stable-facts`, { method: "GET" }, query);
+}
+
+export function createProjectStableFact(baseUrl, projectId, payload) {
+  return requestJson(baseUrl, `/api/projects/${projectId}/stable-facts`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateProjectStableFact(baseUrl, projectId, factId, payload) {
+  return requestJson(baseUrl, `/api/projects/${projectId}/stable-facts/${factId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteProjectStableFact(baseUrl, projectId, factId) {
+  return requestJson(baseUrl, `/api/projects/${projectId}/stable-facts/${factId}`, {
+    method: "DELETE",
+  });
+}
+
 export function listSessions(baseUrl, query = {}) {
   return requestJson(baseUrl, "/api/sessions", { method: "GET" }, {
     include_archived: true,

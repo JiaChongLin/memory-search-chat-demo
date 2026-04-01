@@ -29,7 +29,8 @@ class ChatResponse(BaseModel):
     session_id: str
     reply: str
     title: Optional[str] = None
-    summary: Optional[str] = None
+    working_memory: Optional[str] = None
+    session_digest: Optional[str] = None
     used_live_model: bool = False
     fallback_reason: Optional[str] = None
     search_triggered: bool = False

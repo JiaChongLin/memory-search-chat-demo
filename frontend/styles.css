@@ -1306,3 +1306,85 @@ h3 {
 .confirm-modal-actions {
   justify-content: flex-end;
 }
+
+.memory-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.memory-block {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.mini-head.compact {
+  margin-bottom: 8px;
+}
+
+.project-modal-card {
+  width: min(720px, calc(100vw - 24px));
+  max-height: min(92vh, 980px);
+  overflow: auto;
+}
+
+.stable-facts-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(23, 47, 53, 0.08);
+}
+
+.stable-fact-list {
+  display: grid;
+  gap: 10px;
+}
+
+.stable-fact-item {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(23, 47, 53, 0.08);
+}
+
+.stable-fact-item.is-archived {
+  opacity: 0.78;
+  background: rgba(250, 245, 239, 0.72);
+}
+
+.stable-fact-content {
+  line-height: 1.6;
+  color: var(--text-body);
+  white-space: pre-wrap;
+}
+
+.stable-fact-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stable-fact-actions .ghost-button,
+.stable-fact-actions .danger-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 12px;
+}
+
+.stable-fact-time {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+
+.stable-fact-input {
+  min-height: 92px;
+}
+
+.stable-fact-editor-actions {
+  justify-content: flex-start;
+}

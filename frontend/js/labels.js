@@ -13,12 +13,13 @@ const DEBUG_FIELD_LABELS = {
   current_project_access: "当前项目访问模式",
   current_session_visibility: "当前会话可见性",
   context_scope: "上下文解析结果",
-  related_summary_count: "相关摘要数量",
+  related_summary_count: "相关会话摘要数量",
   used_live_model: "是否直连模型",
   fallback_reason: "降级原因",
   search_triggered: "是否触发搜索",
   search_used: "是否使用搜索结果",
-  summary_cached: "本地摘要缓存",
+  working_memory_cached: "working_memory 缓存",
+  session_digest_cached: "session_digest 缓存",
 };
 
 const FALLBACK_REASON_LABELS = {
@@ -73,8 +74,8 @@ export function getBoolLabel(value) {
   return value ? "是" : "否";
 }
 
-export function getSummaryCachedLabel(hasSummary) {
-  return hasSummary ? "已缓存" : "未缓存";
+export function getMemoryCachedLabel(hasValue) {
+  return hasValue ? "已缓存" : "未缓存";
 }
 
 export function getModelUsageLabel(usedLiveModel) {

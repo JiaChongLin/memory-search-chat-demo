@@ -20,11 +20,13 @@ class ProjectService:
 
     def create_project(self, payload: ProjectCreateRequest) -> Project:
         normalized_name = self._normalize_name(payload.name)
-        normalized_description = self._normalize_description(payload.description)
+        normalized_description = self._normalize_optional_text(payload.description)
+        normalized_instruction = self._normalize_optional_text(payload.instruction)
         normalized_payload = payload.model_copy(
             update={
                 "name": normalized_name,
                 "description": normalized_description,
+                "instruction": normalized_instruction,
             }
         )
 
@@ -56,14 +58,19 @@ class ProjectService:
 
     def update_project(self, project_id: int, payload: ProjectUpdateRequest) -> Project:
         project = self.get_project(project_id)
+        changes = payload.model_dump(exclude_unset=True)
         changed = False
 
-        if payload.name is not None:
-            project.name = self._normalize_name(payload.name)
+        if "name" in changes:
+            project.name = self._normalize_name(payload.name or "")
             changed = True
 
-        if payload.description is not None:
-            project.description = self._normalize_description(payload.description)
+        if "description" in changes:
+            project.description = self._normalize_optional_text(payload.description)
+            changed = True
+
+        if "instruction" in changes:
+            project.instruction = self._normalize_optional_text(payload.instruction)
             changed = True
 
         if changed:
@@ -90,7 +97,7 @@ class ProjectService:
             )
         return normalized
 
-    def _normalize_description(self, value: str | None) -> str | None:
+    def _normalize_optional_text(self, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
@@ -117,6 +124,7 @@ class ProjectService:
         params: dict[str, object] = {
             "name": payload.name,
             "description": payload.description,
+            "instruction": payload.instruction,
             "access_mode": payload.access_mode,
             "status": STATUS_ACTIVE,
             "created_at": now,
@@ -130,6 +138,9 @@ class ProjectService:
             "created_at",
             "updated_at",
         ]
+
+        if "instruction" in project_columns:
+            insert_columns.append("instruction")
 
         if "scope_mode" in project_columns:
             params["scope_mode"] = (

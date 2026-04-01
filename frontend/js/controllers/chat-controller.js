@@ -4,9 +4,9 @@ import {
   setBusy,
   setChatDebug,
   setCurrentSessionId,
+  setMemoryForSession,
   setNotice,
   setSelectedSessionDetail,
-  setSummaryForSession,
 } from "../state.js";
 import { buildAssistantDebug } from "../helpers/ui-helpers.js";
 
@@ -67,7 +67,10 @@ export function createChatController({
 
       setCurrentSessionId(response.session_id);
       setSelectedSessionDetail(nextSessionDetail);
-      setSummaryForSession(response.session_id, response.summary || null);
+      setMemoryForSession(response.session_id, {
+        working_memory: response.working_memory || null,
+        session_digest: response.session_digest || null,
+      });
       setChatDebug(response.session_id, buildAssistantDebug(response));
 
       appendMessage(response.session_id, {

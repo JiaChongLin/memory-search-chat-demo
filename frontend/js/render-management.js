@@ -61,6 +61,13 @@ function getUnassignedSessions(state) {
   return state.sessions.filter((session) => session.project_id === null);
 }
 
+function getStableFactsForProject(state, projectId) {
+  if (!projectId) {
+    return [];
+  }
+  return Array.isArray(state.stableFactMap[projectId]) ? state.stableFactMap[projectId] : [];
+}
+
 function renderSessionButton(state, session) {
   const selected = state.currentSessionId === session.id ? "selected" : "";
   return `
@@ -87,6 +94,9 @@ function renderSidebarProjectItem(state, project) {
   );
   const visibleSessions = showAllSessions ? sessions : sessions.slice(0, 5);
   const hasMoreSessions = sessions.length > 5;
+  const instructionHint = project.instruction
+    ? `<div class="sidebar-note compact">instruction：${escapeHtml(project.instruction)}</div>`
+    : "";
 
   return `
     <article class="nav-project-group ${isSelected ? "selected" : ""}">
@@ -98,6 +108,7 @@ function renderSidebarProjectItem(state, project) {
           </span>
           <span class="nav-project-meta">
             ${badge(getAccessModeLabel(project.access_mode), "scope")}
+            ${project.instruction ? badge("有指令", "soft") : ""}
           </span>
         </button>
         <div class="nav-project-actions">
@@ -131,6 +142,7 @@ function renderSidebarProjectItem(state, project) {
         isExpanded
           ? `
             <div class="nav-project-children">
+              ${instructionHint}
               ${
                 sessions.length
                   ? `
@@ -172,7 +184,7 @@ function renderProjectsSection(state, elements) {
         ? ""
         : `
           <div class="sidebar-section-body">
-            <div class="sidebar-note">项目访问模式决定跨项目边界，删除项目会级联删除项目内全部会话、消息和摘要。</div>
+            <div class="sidebar-note">项目访问模式决定跨项目边界；项目级 instruction 只负责聊天行为提示；stable facts 负责长期稳定信息层。</div>
             <div class="nav-list">
               ${
                 projects.length
@@ -232,6 +244,11 @@ function renderUnassignedSection(state, elements) {
 function renderCurrentSessionPanel(state, elements) {
   const session = state.selectedSessionDetail;
   const project = state.projects.find((item) => item.id === session?.project_id) || null;
+  const stableFacts = getStableFactsForProject(state, project?.id);
+  const activeStableFacts = stableFacts.filter((item) => item.status === "active");
+  const projectInstruction = project?.instruction
+    ? escapeHtml(project.instruction)
+    : "当前项目未配置 instruction。";
 
   if (!session) {
     elements.sessionDetail.innerHTML = `
@@ -265,6 +282,16 @@ function renderCurrentSessionPanel(state, elements) {
         <span>最后一条消息：${escapeHtml(formatDateTime(session.last_message_at))}</span>
       </div>
       <p class="hint-text">切换私密性只影响其他会话能否读取当前会话，不影响当前会话读取别人。</p>
+      ${
+        project
+          ? `<p class="hint-text">项目级 instruction 会在聊天时注入 system context：${projectInstruction}</p>`
+          : '<p class="hint-text">当前会话不属于任何项目，因此不会注入项目级 instruction。</p>'
+      }
+      ${
+        project
+          ? `<p class="hint-text">当前项目 active stable facts：${activeStableFacts.length} 条。它们属于长期稳定信息层，不等于消息历史，也不等于会话摘要。</p>`
+          : '<p class="hint-text">当前会话没有项目容器，因此不会注入 stable facts。</p>'
+      }
       <div class="inline-row action-stack">
         <button id="toggleSessionPrivacyButton" class="ghost-button" type="button">${session.is_private ? "设为共享" : "设为私密"}</button>
         <button id="archiveSessionButton" class="ghost-button" type="button">归档</button>
@@ -331,6 +358,7 @@ function renderNewChatMenu(state, elements) {
     ? `
         <div class="floating-menu-group">
           <span class="floating-menu-label">当前项目</span>
+          <p class="sidebar-note compact">${escapeHtml(project.instruction || "当前项目未配置 instruction。")}</p>
           <div class="floating-menu-actions">
             <button class="secondary-button" type="button" data-create-session-scope="current-project" data-create-session-private="false">共享会话</button>
             <button class="ghost-button" type="button" data-create-session-scope="current-project" data-create-session-private="true">私密会话</button>
@@ -352,12 +380,49 @@ function renderNewChatMenu(state, elements) {
   `;
 }
 
+function renderStableFactList(state, editingProject) {
+  if (!editingProject) {
+    return '<div class="nav-empty">先创建项目，再维护 stable facts。</div>';
+  }
+
+  const facts = getStableFactsForProject(state, editingProject.id);
+  if (!facts.length) {
+    return '<div class="nav-empty">当前项目还没有 stable facts。可以先记录长期偏好、确认事实或长期约束。</div>';
+  }
+
+  return facts
+    .map((fact) => {
+      const statusBadge = fact.status === "active" ? badge("active", "success") : badge("archived", "warning");
+      return `
+        <article class="stable-fact-item ${fact.status === "archived" ? "is-archived" : ""}">
+          <div class="mini-head compact">
+            <div class="tag-row">
+              ${statusBadge}
+              <span class="stable-fact-time">更新于 ${escapeHtml(formatDateTime(fact.updated_at))}</span>
+            </div>
+          </div>
+          <p class="stable-fact-content">${escapeHtml(fact.content)}</p>
+          <div class="stable-fact-actions">
+            <button class="ghost-button" type="button" data-stable-fact-edit="${fact.id}">编辑</button>
+            <button class="ghost-button" type="button" data-stable-fact-toggle="${fact.id}">${fact.status === "active" ? "停用" : "启用"}</button>
+            <button class="danger-button" type="button" data-stable-fact-delete="${fact.id}">删除</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
 function renderProjectModal(state, elements) {
   const isOpen = state.ui.projectModalOpen;
   const mode = state.ui.projectModalMode || "create";
   const editingProject = state.projects.find(
     (project) => project.id === state.ui.editingProjectId,
   ) || null;
+  const stableFacts = getStableFactsForProject(state, editingProject?.id);
+  const activeStableFacts = stableFacts.filter((item) => item.status === "active");
+  const editingStableFact = stableFacts.find((item) => item.id === state.ui.editingStableFactId) || null;
+  const stableFactsEnabled = mode === "edit" && Boolean(editingProject);
 
   elements.projectModal.className = isOpen ? "modal-shell" : "modal-shell hidden";
 
@@ -380,8 +445,44 @@ function renderProjectModal(state, elements) {
     elements.projectAccessReadonly.className =
       mode === "edit" ? "hint-text modal-readonly-note" : "hint-text modal-readonly-note hidden";
     elements.projectAccessReadonly.textContent = editingProject
-      ? `当前访问模式：${getAccessModeLabel(editingProject.access_mode)}`
+      ? `当前访问模式：${getAccessModeLabel(editingProject.access_mode)} (${getAccessModeHelpText(editingProject.access_mode)})`
       : "";
+  }
+  if (elements.projectStableFactsBadge) {
+    elements.projectStableFactsBadge.className = `badge ${stableFactsEnabled ? "soft" : "neutral"}`;
+    elements.projectStableFactsBadge.textContent = stableFactsEnabled
+      ? `${activeStableFacts.length} active / ${stableFacts.length} total`
+      : "创建后可用";
+  }
+  if (elements.projectStableFactsHint) {
+    elements.projectStableFactsHint.textContent = stableFactsEnabled
+      ? "stable facts 是长期稳定信息层。只有 active 条目会在该项目下聊天时注入 system context；它们不等于消息历史，也不等于 working_memory / session_digest。"
+      : "stable facts 挂在项目层。请先创建项目，再记录长期稳定偏好、确认事实或长期约束。";
+  }
+  if (elements.projectStableFactsList) {
+    elements.projectStableFactsList.innerHTML = renderStableFactList(state, editingProject);
+  }
+  if (elements.stableFactEditorLabel) {
+    elements.stableFactEditorLabel.textContent = editingStableFact
+      ? "编辑 stable fact"
+      : "新增 stable fact";
+  }
+  if (elements.stableFactInput) {
+    elements.stableFactInput.disabled = !stableFactsEnabled;
+    elements.stableFactInput.placeholder = stableFactsEnabled
+      ? "例如：默认输出简洁结论；用户长期偏好中文；预算上限长期保持在 5000 元内。"
+      : "请先创建项目，再维护 stable facts。";
+  }
+  if (elements.stableFactSubmitButton) {
+    elements.stableFactSubmitButton.disabled = !stableFactsEnabled;
+    elements.stableFactSubmitButton.textContent = editingStableFact ? "更新 stable fact" : "保存 stable fact";
+  }
+  if (elements.stableFactCancelButton) {
+    elements.stableFactCancelButton.disabled = !stableFactsEnabled || !editingStableFact;
+    elements.stableFactCancelButton.className =
+      !stableFactsEnabled || !editingStableFact
+        ? "ghost-button hidden"
+        : "ghost-button";
   }
 }
 

@@ -5,6 +5,7 @@
   getDebugFieldLabel,
   getBoolLabel,
   getFallbackReasonLabel,
+  getMemoryCachedLabel,
   getModelUsageLabel,
   getPrivacyHelpText,
   getPrivacyLabel,
@@ -12,12 +13,11 @@
   getSearchUsageLabel,
   getSessionTitle,
   getStatusLabel,
-  getSummaryCachedLabel,
 } from "./labels.js";
 import {
   getDebugForSession,
+  getMemoryForSession,
   getMessagesForCurrentSession,
-  getSummaryForSession,
 } from "./state.js";
 
 const messageRenderCache = {
@@ -53,7 +53,7 @@ function buildDebugItems(message) {
   const debug = message.debug;
   const items = [
     { label: `解析结果：${getAccessModeLabel(debug.context_scope || "open")}`, variant: "scope" },
-    { label: `相关摘要 ${debug.related_summary_count ?? 0} 条`, variant: "soft" },
+    { label: `相关 digest ${debug.related_summary_count ?? 0} 条`, variant: "soft" },
     {
       label: getModelUsageLabel(debug.used_live_model),
       variant: debug.used_live_model ? "success" : "warning",
@@ -136,7 +136,7 @@ function renderHeader(state, elements) {
 function renderDebugPanel(state, elements) {
   const sessionId = state.currentSessionId;
   const debug = getDebugForSession(sessionId);
-  const summary = getSummaryForSession(sessionId);
+  const memory = getMemoryForSession(sessionId);
   const session = state.selectedSessionDetail;
   const project = resolveCurrentProject(state);
 
@@ -150,7 +150,8 @@ function renderDebugPanel(state, elements) {
     ["fallback_reason", getFallbackReasonLabel(debug?.fallback_reason)],
     ["search_triggered", getBoolLabel(debug?.search_triggered)],
     ["search_used", getBoolLabel(debug?.search_used)],
-    ["summary_cached", getSummaryCachedLabel(Boolean(summary))],
+    ["working_memory_cached", getMemoryCachedLabel(Boolean(memory?.working_memory))],
+    ["session_digest_cached", getMemoryCachedLabel(Boolean(memory?.session_digest))],
   ];
 
   elements.debugInfo.innerHTML = rows
@@ -174,7 +175,7 @@ function renderDebugPanel(state, elements) {
     notes.push(`当前会话：${getPrivacyHelpText(session.is_private)}`);
   }
   if (!debug && sessionId) {
-    notes.push("调试快照只在当前页面会话内保留；刷新后不会从后端恢复。")
+    notes.push("调试快照只在当前页面会话内保留；刷新后不会从后端恢复。");
   }
 
   elements.debugNote.textContent = notes.length
@@ -182,20 +183,40 @@ function renderDebugPanel(state, elements) {
     : "这里会继续显示 context_scope，但现在按 access_mode 语义解释，而不是旧的四档 scope。";
 }
 
-function renderSummary(state, elements) {
-  const summary = getSummaryForSession(state.currentSessionId);
-  if (summary) {
-    elements.summaryText.textContent = summary;
-    elements.summaryBadge.className = "badge success";
-    elements.summaryBadge.textContent = "已缓存";
+function renderMemoryField(textElement, badgeElement, value, emptyText) {
+  if (value) {
+    textElement.textContent = value;
+    badgeElement.className = "badge success";
+    badgeElement.textContent = "已缓存";
     return;
   }
 
-  elements.summaryText.textContent = state.currentSessionId
-    ? "当前选中会话暂时还没有可显示的 summary。发送聊天后，或刷新后从后端回读到内部摘要时，这里会显示会话 summary。"
-    : "当前没有选中会话。请先在左侧导航中创建或选择会话。";
-  elements.summaryBadge.className = "badge neutral";
-  elements.summaryBadge.textContent = "无摘要";
+  textElement.textContent = emptyText;
+  badgeElement.className = "badge neutral";
+  badgeElement.textContent = "暂无";
+}
+
+function renderMemory(state, elements) {
+  const memory = getMemoryForSession(state.currentSessionId);
+  const hasSession = Boolean(state.currentSessionId);
+
+  renderMemoryField(
+    elements.workingMemoryText,
+    elements.workingMemoryBadge,
+    memory?.working_memory || null,
+    hasSession
+      ? "当前选中会话暂时还没有 working_memory。发送聊天后，旧消息压缩完成时会在这里显示。"
+      : "当前没有选中会话。请先在左侧导航中创建或选择会话。",
+  );
+
+  renderMemoryField(
+    elements.sessionDigestText,
+    elements.sessionDigestBadge,
+    memory?.session_digest || null,
+    hasSession
+      ? "当前选中会话暂时还没有 session_digest。发送聊天后，会话级滚动摘要会在这里显示。"
+      : "当前没有选中会话。请先在左侧导航中创建或选择会话。",
+  );
 }
 
 function renderComposerState(state, elements) {
@@ -225,7 +246,7 @@ function renderComposerState(state, elements) {
   }
 
   elements.composerHint.textContent = "Shift + Enter 换行，Enter 发送。";
-  elements.messageInput.placeholder = "围绕当前会话继续聊天，观察 summary、sources 和调试信息变化。";
+  elements.messageInput.placeholder = "围绕当前会话继续聊天，观察 working_memory、session_digest、sources 和调试信息变化。";
 }
 
 function renderNotice(state, elements) {
@@ -305,8 +326,6 @@ function buildMessageNode(message, template) {
   if (!Array.isArray(message.sources) || message.sources.length === 0) {
     sourceList.remove();
   } else {
-    // Build source cards with textContent + protocol checks so untrusted source data
-    // cannot inject markup or executable javascript: URLs into the chat thread.
     message.sources.forEach((source) => {
       sourceList.appendChild(buildSourceNode(source));
     });
@@ -381,8 +400,6 @@ function renderMessages(state, elements) {
     messageRenderCache.messageCount === messages.length &&
     messageRenderCache.lastMessageKey === lastMessageKey;
 
-  // renderChat still runs on every state change, but the message list only
-  // updates when the selected session or its messages actually changed.
   if (sameSession && sameArrayRef && sameTail) {
     return;
   }
@@ -416,8 +433,9 @@ function renderMessages(state, elements) {
 export function renderChat(state, elements) {
   renderNotice(state, elements);
   renderHeader(state, elements);
-  renderSummary(state, elements);
+  renderMemory(state, elements);
   renderDebugPanel(state, elements);
   renderComposerState(state, elements);
   renderMessages(state, elements);
 }
+

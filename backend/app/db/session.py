@@ -11,6 +11,7 @@ from backend.app.db.models import Base
 from backend.app.domain.constants import (
     PROJECT_ACCESS_OPEN,
     PROJECT_ACCESS_PROJECT_ONLY,
+    SESSION_SUMMARY_KIND_WORKING_MEMORY,
 )
 
 
@@ -63,6 +64,10 @@ def _migrate_sqlite_schema() -> None:
                 "ALTER TABLE projects ADD COLUMN access_mode VARCHAR(32) "
                 f"NOT NULL DEFAULT '{PROJECT_ACCESS_OPEN}'"
             )
+        if "instruction" not in project_columns:
+            migration_statements.append(
+                "ALTER TABLE projects ADD COLUMN instruction TEXT"
+            )
 
     if inspector.has_table("chat_sessions"):
         chat_session_columns = {
@@ -95,6 +100,13 @@ def _migrate_sqlite_schema() -> None:
             migration_statements.append(
                 "ALTER TABLE chat_sessions ADD COLUMN summary_updated_at DATETIME"
             )
+
+    if inspector.has_table("session_summaries"):
+        summary_columns = {
+            column["name"] for column in inspector.get_columns("session_summaries")
+        }
+        if "kind" not in summary_columns:
+            _migrate_session_summaries_table()
 
     if migration_statements:
         with engine.begin() as connection:
@@ -185,8 +197,47 @@ def _backfill_session_metadata(inspector) -> None:  # type: ignore[no-untyped-de
                 text(
                     "UPDATE chat_sessions "
                     "SET summary_updated_at = ("
-                    "  SELECT updated_at FROM session_summaries "
+                    "  SELECT MAX(updated_at) FROM session_summaries "
                     "  WHERE session_summaries.session_id = chat_sessions.id"
                     ")"
                 )
             )
+
+
+def _migrate_session_summaries_table() -> None:
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE session_summaries RENAME TO session_summaries_legacy"))
+        connection.execute(
+            text(
+                "CREATE TABLE session_summaries ("
+                "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+                "session_id VARCHAR(64) NOT NULL, "
+                "kind VARCHAR(32) NOT NULL, "
+                "content TEXT NOT NULL, "
+                "updated_at DATETIME NOT NULL, "
+                "FOREIGN KEY(session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE, "
+                "CONSTRAINT uq_session_summaries_session_kind UNIQUE (session_id, kind)"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO session_summaries (id, session_id, kind, content, updated_at) "
+                "SELECT id, session_id, :kind, content, updated_at "
+                "FROM session_summaries_legacy"
+            ),
+            {"kind": SESSION_SUMMARY_KIND_WORKING_MEMORY},
+        )
+        connection.execute(text("DROP TABLE session_summaries_legacy"))
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_session_summaries_session_id "
+                "ON session_summaries (session_id)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_session_summaries_kind "
+                "ON session_summaries (kind)"
+            )
+        )

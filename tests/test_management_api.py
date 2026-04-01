@@ -1,15 +1,22 @@
 ﻿from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from backend.app.db.models import ChatMessage, ChatSession, Project, SessionSummary
+from backend.app.db.models import (
+    ChatMessage,
+    ChatSession,
+    Project,
+    ProjectStableFact,
+    SessionSummary,
+)
 
 
-def test_create_project(client: TestClient) -> None:
+def test_create_project_returns_instruction(client: TestClient) -> None:
     response = client.post(
         "/api/projects",
         json={
             "name": "Demo Project",
             "description": "New access model project",
+            "instruction": "Always answer as a product copilot.",
             "access_mode": "project_only",
         },
     )
@@ -18,8 +25,31 @@ def test_create_project(client: TestClient) -> None:
     data = response.json()
     assert data["id"] > 0
     assert data["name"] == "Demo Project"
+    assert data["instruction"] == "Always answer as a product copilot."
     assert data["access_mode"] == "project_only"
     assert data["status"] == "active"
+
+
+def test_get_and_list_projects_include_instruction(client: TestClient) -> None:
+    create_response = client.post(
+        "/api/projects",
+        json={
+            "name": "Instruction Project",
+            "instruction": "Prefer concise implementation plans.",
+            "access_mode": "open",
+        },
+    )
+    project_id = create_response.json()["id"]
+
+    get_response = client.get(f"/api/projects/{project_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["instruction"] == "Prefer concise implementation plans."
+
+    list_response = client.get("/api/projects")
+    assert list_response.status_code == 200
+    matching = [item for item in list_response.json() if item["id"] == project_id]
+    assert matching
+    assert matching[0]["instruction"] == "Prefer concise implementation plans."
 
 
 def test_patch_project_updates_name(client: TestClient) -> None:
@@ -55,6 +85,22 @@ def test_patch_project_updates_description(client: TestClient) -> None:
     assert response.json()["description"] == "Updated description"
 
 
+def test_patch_project_updates_instruction(client: TestClient) -> None:
+    create_response = client.post(
+        "/api/projects",
+        json={"name": "Project A", "instruction": None, "access_mode": "open"},
+    )
+    project_id = create_response.json()["id"]
+
+    response = client.patch(
+        f"/api/projects/{project_id}",
+        json={"instruction": "Default to Chinese and keep answers brief."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["instruction"] == "Default to Chinese and keep answers brief."
+
+
 def test_patch_project_does_not_allow_access_mode_update(client: TestClient) -> None:
     create_response = client.post(
         "/api/projects",
@@ -80,6 +126,68 @@ def test_patch_project_returns_404_when_missing(client: TestClient) -> None:
     )
 
     assert response.status_code == 404
+
+
+def test_project_stable_facts_crud(client: TestClient) -> None:
+    project_id = client.post(
+        "/api/projects",
+        json={"name": "Stable Facts Project", "access_mode": "open"},
+    ).json()["id"]
+
+    empty_response = client.get(f"/api/projects/{project_id}/stable-facts")
+    assert empty_response.status_code == 200
+    assert empty_response.json() == []
+
+    create_response = client.post(
+        f"/api/projects/{project_id}/stable-facts",
+        json={"content": "User prefers concise Chinese answers."},
+    )
+    assert create_response.status_code == 201
+    fact = create_response.json()
+    assert fact["project_id"] == project_id
+    assert fact["status"] == "active"
+
+    list_response = client.get(f"/api/projects/{project_id}/stable-facts")
+    assert list_response.status_code == 200
+    assert len(list_response.json()) == 1
+    assert list_response.json()[0]["content"] == "User prefers concise Chinese answers."
+
+    update_response = client.patch(
+        f"/api/projects/{project_id}/stable-facts/{fact['id']}",
+        json={"content": "User prefers concise Chinese answers with action items."},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["content"] == "User prefers concise Chinese answers with action items."
+
+    archive_response = client.patch(
+        f"/api/projects/{project_id}/stable-facts/{fact['id']}",
+        json={"status": "archived"},
+    )
+    assert archive_response.status_code == 200
+    assert archive_response.json()["status"] == "archived"
+
+    active_only_response = client.get(f"/api/projects/{project_id}/stable-facts")
+    assert active_only_response.status_code == 200
+    assert active_only_response.json() == []
+
+    include_archived_response = client.get(
+        f"/api/projects/{project_id}/stable-facts",
+        params={"include_archived": "true"},
+    )
+    assert include_archived_response.status_code == 200
+    assert len(include_archived_response.json()) == 1
+    assert include_archived_response.json()[0]["status"] == "archived"
+
+    delete_response = client.delete(f"/api/projects/{project_id}/stable-facts/{fact['id']}")
+    assert delete_response.status_code == 200
+    assert delete_response.json()["stable_fact_id"] == fact["id"]
+
+    final_list_response = client.get(
+        f"/api/projects/{project_id}/stable-facts",
+        params={"include_archived": "true"},
+    )
+    assert final_list_response.status_code == 200
+    assert final_list_response.json() == []
 
 
 def test_create_session_under_project(client: TestClient) -> None:
@@ -172,7 +280,7 @@ def test_get_session_messages_returns_messages_in_order(client: TestClient) -> N
     assert payload[2]["content"] == "second question"
 
 
-def test_get_session_summary_returns_current_summary(client: TestClient) -> None:
+def test_get_session_summary_returns_working_memory_and_session_digest(client: TestClient) -> None:
     create_response = client.post("/api/sessions", json={"title": "Summary history"})
     session_id = create_response.json()["id"]
 
@@ -192,9 +300,12 @@ def test_get_session_summary_returns_current_summary(client: TestClient) -> None
     assert response.status_code == 200
     payload = response.json()
     assert payload["session_id"] == session_id
-    assert isinstance(payload["summary"], str)
-    assert payload["summary"]
+    assert isinstance(payload["working_memory"], str)
+    assert payload["working_memory"]
+    assert isinstance(payload["session_digest"], str)
+    assert payload["session_digest"]
     assert payload["summary_updated_at"] is not None
+
 
 def test_patch_session_updates_title(client: TestClient) -> None:
     create_response = client.post("/api/sessions", json={"title": "Old title"})
@@ -248,7 +359,7 @@ def test_delete_session_hard_deletes_session_messages_and_summary(
         ).first() is None
 
 
-def test_delete_project_cascades_to_sessions_messages_and_summaries(
+def test_delete_project_cascades_to_sessions_messages_summaries_and_stable_facts(
     client: TestClient,
     session_local,
 ) -> None:
@@ -257,6 +368,11 @@ def test_delete_project_cascades_to_sessions_messages_and_summaries(
         json={"name": "Cascade Project", "access_mode": "project_only"},
     )
     project_id = project_response.json()["id"]
+
+    stable_fact_id = client.post(
+        f"/api/projects/{project_id}/stable-facts",
+        json={"content": "Keep answers aligned with roadmap commitments."},
+    ).json()["id"]
 
     session_a = client.post(
         "/api/sessions",
@@ -281,6 +397,7 @@ def test_delete_project_cascades_to_sessions_messages_and_summaries(
 
     with session_local() as db:
         assert db.get(Project, project_id) is None
+        assert db.get(ProjectStableFact, stable_fact_id) is None
         assert db.get(ChatSession, session_a) is None
         assert db.get(ChatSession, session_b) is None
         assert db.scalars(
@@ -310,5 +427,3 @@ def test_move_session_out_of_project(client: TestClient) -> None:
 
     assert move_response.status_code == 200
     assert move_response.json()["project_id"] is None
-
-

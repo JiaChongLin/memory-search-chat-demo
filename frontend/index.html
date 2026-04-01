@@ -78,16 +78,33 @@
 
         <section class="panel secondary-stack">
           <details class="secondary-details">
-            <summary>内部 summary（调试）</summary>
+            <summary>会话记忆（调试）</summary>
             <div class="secondary-body">
               <div class="mini-head">
-                <h3>内部记忆摘要</h3>
-                <span id="summaryBadge" class="badge neutral">无摘要</span>
+                <h3>当前会话派生记忆</h3>
+                <span class="badge soft">memory layers</span>
               </div>
-              <p id="summaryText" class="summary-text">
-                当前没有选中会话。请先在左侧导航中创建或选择会话。
-              </p>
-              <p class="hint-text">ChatMessage 仍然是真实历史；这里的 summary 只是系统内部派生缓存，用于调试和记忆观察。</p>
+              <div class="memory-stack">
+                <div class="memory-block">
+                  <div class="mini-head compact">
+                    <h4>working_memory</h4>
+                    <span id="workingMemoryBadge" class="badge neutral">暂无</span>
+                  </div>
+                  <p id="workingMemoryText" class="summary-text">
+                    当前没有选中会话。请先在左侧导航中创建或选择会话。
+                  </p>
+                </div>
+                <div class="memory-block">
+                  <div class="mini-head compact">
+                    <h4>session_digest</h4>
+                    <span id="sessionDigestBadge" class="badge neutral">暂无</span>
+                  </div>
+                  <p id="sessionDigestText" class="summary-text">
+                    当前没有选中会话。请先在左侧导航中创建或选择会话。
+                  </p>
+                </div>
+              </div>
+              <p class="hint-text">ChatMessage 仍然是真实历史；working_memory 供当前会话续聊使用，session_digest 供其他会话 / 项目层读取使用。</p>
             </div>
           </details>
 
@@ -117,7 +134,7 @@
               </button>
               <button
                 class="quick-chip"
-                data-prompt="解释一下 related_summary_count 为什么会变化"
+                data-prompt="解释一下 related_summary_count 为什么会变化，以及它现在对应哪些 session_digest"
                 type="button"
               >
                 测试调试字段
@@ -152,7 +169,7 @@
 
     <div id="projectModal" class="modal-shell hidden">
       <div class="modal-backdrop" data-close-project-modal="true"></div>
-      <div class="modal-card">
+      <div class="modal-card project-modal-card">
         <div class="panel-head compact">
           <h2 id="projectModalTitle">新建项目</h2>
           <button id="closeProjectModalButton" class="icon-button" type="button" aria-label="关闭">
@@ -164,8 +181,12 @@
           <label class="field-label" for="projectNameInput">项目名称</label>
           <input id="projectNameInput" class="text-input" type="text" maxlength="255" required />
 
-          <label class="field-label" for="projectDescriptionInput">项目描述（可选）</label>
-          <textarea id="projectDescriptionInput" class="text-area" rows="3" maxlength="4000"></textarea>
+          <label class="field-label" for="projectInstructionInput">项目级指令（可选）</label>
+          <textarea id="projectInstructionInput" class="text-area" rows="4" maxlength="4000" placeholder="例如：默认用中文回答；优先站在产品经理视角；输出保持简洁可执行。"></textarea>
+          <p class="hint-text">这是项目级行为指令，会在该项目下会话聊天时注入 system context。</p>
+
+          <label class="field-label" for="projectDescriptionInput">项目说明（可选）</label>
+          <textarea id="projectDescriptionInput" class="text-area" rows="3" maxlength="4000" placeholder="给人看的项目背景说明，不作为主提示词。"></textarea>
 
           <label class="field-label" for="projectAccessSelect">项目访问模式</label>
           <select id="projectAccessSelect" class="select-input">
@@ -177,6 +198,23 @@
           <p class="hint-text">仅限项目：只能访问项目内历史，且项目内会话对项目外不可见。</p>
           <p id="projectAccessReadonly" class="hint-text modal-readonly-note hidden"></p>
           <p id="projectModeHint" class="sidebar-note">创建后项目访问模式当前不支持修改。</p>
+
+          <section class="stable-facts-panel">
+            <div class="mini-head">
+              <h3>Stable Facts / Saved Memory</h3>
+              <span id="projectStableFactsBadge" class="badge neutral">创建后可用</span>
+            </div>
+            <p id="projectStableFactsHint" class="hint-text">
+              stable facts 是项目层长期稳定信息，不是消息历史，也不是聊天摘要。
+            </p>
+            <div id="projectStableFactsList" class="stable-fact-list"></div>
+            <label id="stableFactEditorLabel" class="field-label" for="stableFactInput">新增 stable fact</label>
+            <textarea id="stableFactInput" class="text-area stable-fact-input" rows="3" maxlength="4000" placeholder="例如：默认输出简洁结论；用户长期偏好中文；预算上限长期保持在 5000 元内。"></textarea>
+            <div class="inline-row stable-fact-editor-actions">
+              <button id="stableFactSubmitButton" class="secondary-button" type="button">保存 stable fact</button>
+              <button id="stableFactCancelButton" class="ghost-button hidden" type="button">取消编辑</button>
+            </div>
+          </section>
 
           <button id="projectSubmitButton" class="primary-button" type="submit">创建项目</button>
         </form>
@@ -240,4 +278,3 @@
     <script type="module" src="./js/main.js"></script>
   </body>
 </html>
-

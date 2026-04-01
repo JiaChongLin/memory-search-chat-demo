@@ -47,11 +47,15 @@ class ChatService:
         llm_reply = self._llm_service.generate_reply(
             user_message=payload.message,
             history=resolved_context.recent_messages,
-            session_summary=resolved_context.context_summary,
+            stable_facts=resolved_context.stable_facts,
+            working_memory=resolved_context.working_memory,
+            related_session_digests=resolved_context.related_session_digests,
+            project_name=resolved_context.project_name,
+            project_instruction=resolved_context.project_instruction,
             search_results=search_results,
         )
 
-        updated_summary = self._memory_service.append_turn(
+        memory_snapshot = self._memory_service.append_turn(
             session_id=session_id,
             user_message=payload.message,
             assistant_message=llm_reply.content,
@@ -71,7 +75,8 @@ class ChatService:
             session_id=session_id,
             reply=llm_reply.content,
             title=session_title,
-            summary=updated_summary,
+            working_memory=memory_snapshot.working_memory,
+            session_digest=memory_snapshot.session_digest,
             used_live_model=llm_reply.used_live_model,
             fallback_reason=llm_reply.fallback_reason,
             search_triggered=search_triggered,
@@ -85,7 +90,7 @@ class ChatService:
                 for result in search_results
             ],
             context_scope=resolved_context.context_scope,
-            related_summary_count=len(resolved_context.related_summaries),
+            related_summary_count=len(resolved_context.related_session_digests),
         )
 
     def _create_session_id(self) -> str:

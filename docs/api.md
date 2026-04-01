@@ -39,10 +39,22 @@
 说明：
 
 - `session_id` 不传时会自动创建新会话 ID
-- 当前会话自己的 recent messages 和 summary 始终优先进入上下文
-- 其他会话当前只以 summary 参与上下文，不读取完整原始消息
+- 当前会话自己的 recent messages 和 `working_memory` 始终优先进入上下文
+- 其他会话当前只以 `session_digest` 参与上下文，不读取完整原始消息
+- 如果当前会话属于项目，会额外注入 `project.name`、`project.instruction` 和项目 active `stable facts`
+- `stable facts` 是长期稳定信息层，不是消息历史，也不是聊天摘要
 - `archived` 会话不能继续聊天
 - allowlist 仍未实现
+
+当前 system context 顺序：
+
+1. 全局 `SYSTEM_PROMPT`
+2. `project.name` + `project.instruction`
+3. 项目 active `stable facts`
+4. 当前会话 `working_memory`
+5. 相关会话 `session_digest`
+6. 搜索上下文
+7. recent messages
 
 响应示例：
 
@@ -51,7 +63,8 @@
   "session_id": "8d4e5c7c5e954a5fa9f6d8f7567dc001",
   "reply": "demo reply",
   "title": "hello demo",
-  "summary": null,
+  "working_memory": null,
+  "session_digest": "User: hello demo | Assistant: demo reply",
   "used_live_model": false,
   "fallback_reason": "missing_api_key",
   "search_triggered": false,
@@ -67,7 +80,7 @@
 - `context_scope`
   当前会话实际使用的访问模式，当前只有：`open` / `project_only`
 - `related_summary_count`
-  本次注入到上下文中的其他会话摘要数量
+  本次注入到上下文中的其他会话 `session_digest` 数量
 
 ### 自动命名行为
 
@@ -92,35 +105,101 @@
 ```json
 {
   "name": "Demo Project",
-  "description": "optional",
+  "instruction": "Always answer like a product copilot.",
+  "description": "optional human-readable description",
   "access_mode": "project_only"
 }
 ```
 
+字段语义：
+
+- `name`：项目主题名，弱提示
+- `instruction`：项目级行为指令，会在该项目下聊天时进入 system context
+- `description`：给人看的项目说明，不作为主提示词
+- `access_mode`：访问边界控制，不负责提示词语义
+
 ### GET /api/projects
 
-列出项目。
+列出项目，响应中包含 `instruction`。
 
 ### GET /api/projects/{project_id}
 
-查看单个项目。
+查看单个项目，响应中包含 `instruction`。
 
 ### PATCH /api/projects/{project_id}
 
-更新项目。当前只允许修改：`name`、`description`。`access_mode` 创建后不可修改。
+更新项目。当前只允许修改：`name`、`instruction`、`description`。`access_mode` 创建后不可修改。
 
 请求体示例：
 
 ```json
 {
-  "name": "新的项目名称",
-  "description": "新的项目描述"
+  "instruction": "Default to Chinese and keep answers concise.",
+  "description": "新的项目说明"
 }
 ```
 
 ### DELETE /api/projects/{project_id}
 
-硬删除项目，并级联删除项目内全部会话、消息和摘要。
+硬删除项目，并级联删除项目内全部会话、消息、摘要和 stable facts。
+
+## 项目 stable facts 接口
+
+### GET /api/projects/{project_id}/stable-facts
+
+列出某个项目的 stable facts。
+
+查询参数：
+
+- `include_archived`，默认 `false`
+
+默认只返回 `active` 条目。
+
+### POST /api/projects/{project_id}/stable-facts
+
+创建项目 stable fact。
+
+请求体：
+
+```json
+{
+  "content": "User prefers concise Chinese answers."
+}
+```
+
+### PATCH /api/projects/{project_id}/stable-facts/{fact_id}
+
+更新 stable fact 内容或状态。
+
+请求体示例：
+
+```json
+{
+  "content": "User prefers concise Chinese answers with action items.",
+  "status": "active"
+}
+```
+
+停用 stable fact：
+
+```json
+{
+  "status": "archived"
+}
+```
+
+### DELETE /api/projects/{project_id}/stable-facts/{fact_id}
+
+硬删除 stable fact。
+
+### stable fact 语义说明
+
+- `stable facts` 是项目层长期稳定信息层
+- 适合保存长期偏好、明确确认的事实、长期有效约束
+- 只有 `active` 条目会在聊天时注入上下文
+- 它不是 `ChatMessage` 历史
+- 它不是 `working_memory`
+- 它不是 `session_digest`
 
 ## 会话管理接口
 
@@ -183,7 +262,7 @@
 
 ### PATCH /api/sessions/{session_id}
 
-更新会话信息，当前只支持修改标题。
+更新会话信息，当前支持修改标题和私密性。
 
 请求体：
 
@@ -221,6 +300,27 @@
 }
 ```
 
+### GET /api/sessions/{session_id}/summary
+
+返回当前会话的内部派生记忆，用于前端在刷新后恢复调试展示。
+
+示例响应：
+
+```json
+{
+  "session_id": "abc123",
+  "working_memory": "User: ... | Assistant: ...",
+  "session_digest": "Started with: ... || Current state: ...",
+  "summary_updated_at": "2026-03-31T12:34:56Z"
+}
+```
+
+说明：
+
+- `working_memory` 可能为 `null`，表示当前会话暂时还没有可用的旧窗口工作记忆。
+- `session_digest` 可能为 `null`，表示当前会话暂时还没有可用的会话级摘要。
+- 该接口返回的是派生缓存，而不是事实源；真实历史仍以 `ChatMessage` 为准。
+
 ## 状态与枚举
 
 ### Project.access_mode
@@ -233,7 +333,7 @@
 - `false` 表示 shared
 - `true` 表示 private
 
-### Project.status / ChatSession.status
+### Project.status / ChatSession.status / ProjectStableFact.status
 
 - `active`
 - `archived`
@@ -243,24 +343,7 @@
 当前仍未实现：
 
 - allowlist
+- stable facts 自动抽取
 - 向量库检索
 - 其他会话完整消息拼接
 - 更复杂的召回排序与打分
-
-### GET /api/sessions/{session_id}/summary
-
-返回当前会话的内部派生 summary，用于前端在刷新后恢复 summary 展示。
-
-示例响应：
-
-```json
-{
-  "session_id": "abc123",
-  "summary": "用户: ... | 助手: ...",
-  "summary_updated_at": "2026-03-31T12:34:56Z"
-}
-```
-
-说明：
-- `summary` 可能为 `null`，表示当前会话暂时还没有可用的内部摘要。
-- 该接口返回的是 `SessionSummary` 这份派生缓存，而不是事实源；真实历史仍以 `ChatMessage` 为准。

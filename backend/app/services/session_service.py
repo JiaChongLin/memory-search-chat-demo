@@ -9,7 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models import ChatMessage, ChatSession, Project, utcnow
-from backend.app.domain.constants import RECORD_STATUSES, STATUS_ACTIVE, STATUS_ARCHIVED
+from backend.app.domain.constants import (
+    RECORD_STATUSES,
+    SESSION_SUMMARY_KIND_SESSION_DIGEST,
+    SESSION_SUMMARY_KIND_WORKING_MEMORY,
+    STATUS_ACTIVE,
+    STATUS_ARCHIVED,
+)
 from backend.app.schemas.sessions import (
     SessionCreateRequest,
     SessionProjectMoveRequest,
@@ -62,10 +68,20 @@ class SessionService:
     def get_session(self, session_id: str) -> ChatSession:
         return self._get_session_or_404(session_id)
 
-    def get_session_summary(self, session_id: str) -> tuple[str | None, datetime | None]:
+    def get_session_summary(
+        self,
+        session_id: str,
+    ) -> tuple[str | None, str | None, datetime | None]:
         chat_session = self._get_session_or_404(session_id)
-        summary = chat_session.summary.content if chat_session.summary else None
-        return summary, chat_session.summary_updated_at
+        working_memory = self._get_summary_content(
+            chat_session,
+            SESSION_SUMMARY_KIND_WORKING_MEMORY,
+        )
+        session_digest = self._get_summary_content(
+            chat_session,
+            SESSION_SUMMARY_KIND_SESSION_DIGEST,
+        )
+        return working_memory, session_digest, chat_session.summary_updated_at
 
     def get_session_messages(self, session_id: str) -> list[ChatMessage]:
         self._get_session_or_404(session_id)
@@ -179,6 +195,12 @@ class SessionService:
             return None
         normalized = " ".join(title.split()).strip()
         return normalized or None
+
+    def _get_summary_content(self, chat_session: ChatSession, kind: str) -> str | None:
+        for record in chat_session.summaries:
+            if record.kind == kind:
+                return record.content
+        return None
 
     def _get_project_or_404(self, project_id: int) -> Project:
         project = self._db.get(Project, project_id)
