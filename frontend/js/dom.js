@@ -45,7 +45,6 @@
   inputAcceptButton: document.querySelector("#inputAcceptButton"),
   messageInput: document.querySelector("#messageInput"),
   sendButton: document.querySelector("#sendButton"),
-  cancelLatestTurnEditButton: document.querySelector("#cancelLatestTurnEditButton"),
   composerHint: document.querySelector("#composerHint"),
   workingMemoryBadge: document.querySelector("#workingMemoryBadge"),
   workingMemoryText: document.querySelector("#workingMemoryText"),
