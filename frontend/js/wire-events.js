@@ -22,6 +22,7 @@ export function wireEvents({
   );
   document.addEventListener("click", managementController.handleGlobalClick);
   document.addEventListener("click", chatController.handleGlobalClick);
+  document.addEventListener("input", chatController.handleGlobalInput);
   document.addEventListener("keydown", (event) =>
     noticeModal.handleGlobalKeydown(event, managementController.closeProjectModal),
   );

@@ -1403,11 +1403,40 @@ h3 {
   box-shadow: inset 0 0 0 1px rgba(20, 107, 99, 0.12);
 }
 
+.message-card-editing {
+  box-shadow:
+    inset 0 0 0 1px rgba(20, 107, 99, 0.22),
+    0 8px 18px rgba(20, 107, 99, 0.08);
+}
+
 .message-actions {
   display: inline-flex;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.message-inline-editor {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.message-inline-editor-input {
+  min-height: 96px;
+  resize: none;
+  overflow: hidden;
+}
+
+.message-inline-editor-hint {
+  margin-top: -2px;
+}
+
+.message-inline-editor-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .message-action-button {
@@ -1453,13 +1482,15 @@ h3 {
   }
 
   .message-actions,
-  .composer-action-buttons {
+  .composer-action-buttons,
+  .message-inline-editor-actions {
     width: 100%;
   }
 
   .message-action-button,
   .composer-action-buttons .ghost-button,
-  .composer-action-buttons .primary-button {
+  .composer-action-buttons .primary-button,
+  .message-inline-editor-actions .message-action-button {
     flex: 1 1 0;
   }
 }

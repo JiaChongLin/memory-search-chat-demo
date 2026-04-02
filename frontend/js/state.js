@@ -67,6 +67,9 @@ const state = {
     latestTurnEdit: {
       active: false,
       sessionId: null,
+      messageIndex: -1,
+      originalContent: "",
+      draft: "",
     },
   },
 };
@@ -93,6 +96,9 @@ function buildPersistedSidebarState() {
 function resetLatestTurnEditState(draft) {
   draft.ui.latestTurnEdit.active = false;
   draft.ui.latestTurnEdit.sessionId = null;
+  draft.ui.latestTurnEdit.messageIndex = -1;
+  draft.ui.latestTurnEdit.originalContent = "";
+  draft.ui.latestTurnEdit.draft = "";
 }
 
 function shouldClearLatestTurnEditForSession(draft, sessionId) {
@@ -467,8 +473,8 @@ export function setNewChatMenuOpen(isOpen) {
 }
 
 
-export function setLatestTurnEditMode(sessionId) {
-  if (!sessionId) {
+export function setLatestTurnEditMode(sessionId, messageIndex, originalContent = "") {
+  if (!sessionId || Number.isNaN(Number(messageIndex))) {
     return;
   }
 
@@ -476,6 +482,21 @@ export function setLatestTurnEditMode(sessionId) {
     (draft) => {
       draft.ui.latestTurnEdit.active = true;
       draft.ui.latestTurnEdit.sessionId = sessionId;
+      draft.ui.latestTurnEdit.messageIndex = Number(messageIndex);
+      draft.ui.latestTurnEdit.originalContent = originalContent || "";
+      draft.ui.latestTurnEdit.draft = originalContent || "";
+    },
+    false,
+  );
+}
+
+export function updateLatestTurnEditDraft(draftValue) {
+  commit(
+    (draft) => {
+      if (!draft.ui.latestTurnEdit.active) {
+        return;
+      }
+      draft.ui.latestTurnEdit.draft = draftValue ?? "";
     },
     false,
   );
