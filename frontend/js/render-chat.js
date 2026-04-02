@@ -1,11 +1,11 @@
-﻿import {
+import {
   getAccessModeHelpText,
   getAccessModeLabel,
+  getBoolLabel,
   getCurrentProjectAccessLabel,
   getDebugFieldLabel,
-  getBoolLabel,
-  getFallbackReasonLabel,
   getDerivedMemoryStatusLabel,
+  getFallbackReasonLabel,
   getModelUsageLabel,
   getPrivacyHelpText,
   getPrivacyLabel,
@@ -30,7 +30,8 @@ const messageRenderCache = {
   latestUserIndex: -1,
   latestAssistantIndex: -1,
   sessionStatusKey: "",
-  editModeKey: "",
+  editStateKey: "",
+  editingMessageIndex: -1,
 };
 
 function formatTime(timestamp) {
@@ -57,8 +58,14 @@ function buildDebugItems(message) {
 
   const debug = message.debug;
   const items = [
-    { label: `解析结果：${getAccessModeLabel(debug.context_scope || "open")}`, variant: "scope" },
-    { label: `关联 session_digest ${debug.related_session_digest_count ?? 0}`, variant: "soft" },
+    {
+      label: `解析结果：${getAccessModeLabel(debug.context_scope || "open")}`,
+      variant: "scope",
+    },
+    {
+      label: `关联 session_digest ${debug.related_session_digest_count ?? 0}`,
+      variant: "soft",
+    },
     {
       label: getModelUsageLabel(debug.used_live_model),
       variant: debug.used_live_model ? "success" : "warning",
@@ -236,29 +243,20 @@ function renderComposerState(state, elements) {
   const session = state.selectedSessionDetail;
   const missingSelection = !session;
   const locked = session?.status === "archived";
-  const editingLatestTurn = isEditingLatestTurn(state);
   const disabled = state.busy.chat || missingSelection || locked;
 
   elements.sendButton.disabled = disabled;
-  elements.sendButton.textContent = editingLatestTurn
-    ? "\u4fdd\u5b58\u5e76\u91cd\u7b54"
-    : "\u53d1\u9001";
-  elements.sendButton.textContent = editingLatestTurn ? "保存并重答" : "发送";
+  elements.sendButton.textContent = "发送";
   elements.messageInput.disabled = disabled;
 
   if (elements.cancelLatestTurnEditButton) {
-    elements.cancelLatestTurnEditButton.textContent = "\u53d6\u6d88\u7f16\u8f91";
     elements.cancelLatestTurnEditButton.textContent = "取消编辑";
-    elements.cancelLatestTurnEditButton.className = editingLatestTurn
-      ? "ghost-button"
-      : "ghost-button hidden";
-    elements.cancelLatestTurnEditButton.disabled = state.busy.chat || missingSelection;
+    elements.cancelLatestTurnEditButton.className = "ghost-button hidden";
+    elements.cancelLatestTurnEditButton.disabled = true;
   }
 
   if (state.busy.chat) {
-    elements.composerHint.textContent = editingLatestTurn
-      ? "正在替换最新一轮并重新生成回复，请稍候..."
-      : "请求进行中，请稍候...";
+    elements.composerHint.textContent = "正在发送消息，请稍候...";
     return;
   }
 
@@ -274,19 +272,9 @@ function renderComposerState(state, elements) {
     return;
   }
 
-  if (editingLatestTurn) {
-    elements.composerHint.textContent =
-      "\u6b63\u5728\u7f16\u8f91\u6700\u65b0\u7528\u6237\u6d88\u606f\uff0c\u63d0\u4ea4\u540e\u4f1a\u66ff\u6362\u6700\u65b0\u4e00\u8f6e\u5e76\u91cd\u65b0\u751f\u6210\u56de\u590d\u3002";
-    elements.messageInput.placeholder =
-      "\u7f16\u8f91\u6700\u65b0\u7528\u6237\u6d88\u606f\uff0c\u7136\u540e\u70b9\u51fb\u201c\u4fdd\u5b58\u5e76\u91cd\u7b54\u201d\u3002";
-    return;
-      "正在编辑最新用户消息，提交后会替换最新一轮并重新生成回复。";
-    elements.messageInput.placeholder = "编辑最新用户消息，然后点击“保存并重答”。";
-    elements.messageInput.placeholder = "?????????????????????";
-    return;
-  }
-
-  elements.composerHint.textContent = "Shift + Enter 换行，Enter 发送。";
+  elements.composerHint.textContent = isEditingLatestTurn(state)
+    ? "你正在消息卡片内编辑最新一轮。主输入框仍用于发送新消息。"
+    : "Shift + Enter 换行，Enter 发送。";
   elements.messageInput.placeholder =
     "继续当前会话，观察 working_memory、session_digest、sources 和 debug 字段变化。";
 }
@@ -365,19 +353,86 @@ function buildMessageActionButton({
   return button;
 }
 
-function buildMessageActions(index, message, latestTurnState) {
+function getInlineEditState(state, messages, latestTurnState) {
+  const editState = state.ui.latestTurnEdit || {};
+  const isCurrentSessionEdit =
+    Boolean(editState.active) && editState.sessionId === state.currentSessionId;
+  const messageIndex = isCurrentSessionEdit ? Number(editState.messageIndex) : -1;
+  const isLatestUserEdit = messageIndex >= 0 && messageIndex === latestTurnState.latestUserIndex;
+
+  return {
+    active: isLatestUserEdit,
+    messageIndex: isLatestUserEdit ? messageIndex : -1,
+    originalContent: isLatestUserEdit ? editState.originalContent || "" : "",
+    draft: isLatestUserEdit ? editState.draft || "" : "",
+    isDirty: isLatestUserEdit ? (editState.draft || "") !== (editState.originalContent || "") : false,
+    canSubmit:
+      isLatestUserEdit &&
+      !state.busy.chat &&
+      !latestTurnState.isArchived &&
+      Boolean((editState.draft || "").trim()) &&
+      (editState.draft || "") !== (editState.originalContent || ""),
+    message: isLatestUserEdit ? messages[messageIndex] || null : null,
+  };
+}
+
+function buildInlineEditNode(index, inlineEditState, isBusy) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "message-inline-editor";
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "text-area message-inline-editor-input";
+  textarea.rows = 3;
+  textarea.value = inlineEditState.draft;
+  textarea.disabled = isBusy;
+  textarea.dataset.latestTurnEditInput = String(index);
+  textarea.setAttribute("aria-label", "编辑最新用户消息");
+  wrapper.appendChild(textarea);
+
+  const hint = document.createElement("p");
+  hint.className = "hint-text message-inline-editor-hint";
+  hint.textContent = "修改后会替换最新一轮并重新生成回复。";
+  wrapper.appendChild(hint);
+
+  const actions = document.createElement("div");
+  actions.className = "message-inline-editor-actions";
+  actions.append(
+    buildMessageActionButton({
+      label: "取消",
+      action: "cancel-edit-latest-turn",
+      messageIndex: index,
+      disabled: isBusy,
+      title: "取消本次编辑",
+    }),
+    buildMessageActionButton({
+      label: "发送",
+      action: "submit-edit-latest-turn",
+      messageIndex: index,
+      disabled: !inlineEditState.canSubmit,
+      title: inlineEditState.canSubmit ? "发送编辑后的最新用户消息" : "请先修改内容后再发送",
+    }),
+  );
+  wrapper.appendChild(actions);
+
+  return wrapper;
+}
+
+function buildMessageActions(index, message, latestTurnState, inlineEditState) {
   const isLatestUser = latestTurnState.latestUserIndex === index;
   const isLatestAssistant = latestTurnState.latestAssistantIndex === index;
+
+  if (inlineEditState.active && inlineEditState.messageIndex === index) {
+    return null;
+  }
+
   const container = document.createElement("div");
   container.className = "message-actions";
-
-  const copyTitle = message.role === "assistant" ? "复制最新助手消息" : "复制最新用户消息";
   container.appendChild(
     buildMessageActionButton({
       label: "复制",
       action: "copy-message",
       messageIndex: index,
-      title: copyTitle,
+      title: message.role === "assistant" ? "复制助手消息" : "复制用户消息",
     }),
   );
 
@@ -412,26 +467,34 @@ function buildMessageActions(index, message, latestTurnState) {
   return container;
 }
 
-function buildMessageNode(message, index, latestTurnState, template) {
+function buildMessageNode(message, index, latestTurnState, inlineEditState, template, state) {
   const node = template.content.firstElementChild.cloneNode(true);
   node.classList.add(`message-${message.role}`);
 
   const isLatestUser = latestTurnState.latestUserIndex === index;
   const isLatestAssistant = latestTurnState.latestAssistantIndex === index;
+  const isInlineEditing = inlineEditState.active && inlineEditState.messageIndex === index;
   node.classList.toggle("message-card-latest-turn", isLatestUser || isLatestAssistant);
   node.classList.toggle("message-card-latest-user", isLatestUser);
   node.classList.toggle("message-card-latest-assistant", isLatestAssistant);
+  node.classList.toggle("message-card-editing", isInlineEditing);
 
   node.querySelector(".message-role").textContent = getRoleLabel(message.role);
   node.querySelector(".message-time").textContent = formatTime(message.timestamp);
-  node.querySelector(".message-content").textContent = message.content;
 
-  const actions = buildMessageActions(index, message, latestTurnState);
+  const actions = buildMessageActions(index, message, latestTurnState, inlineEditState);
   const actionsContainer = node.querySelector(".message-actions");
   if (!actions) {
     actionsContainer.remove();
   } else {
     actionsContainer.replaceWith(actions);
+  }
+
+  const contentNode = node.querySelector(".message-content");
+  if (isInlineEditing) {
+    contentNode.replaceWith(buildInlineEditNode(index, inlineEditState, state.busy.chat));
+  } else {
+    contentNode.textContent = message.content;
   }
 
   const metaContainer = node.querySelector(".message-meta");
@@ -462,16 +525,28 @@ function getMessageKey(message) {
     String(message?.timestamp || ""),
     message?.content || "",
     String(Array.isArray(message?.sources) ? message.sources.length : 0),
-    String(message?.debug?.related_session_digest_count ?? message?.debug?.related_summary_count ?? ""),
+    String(
+      message?.debug?.related_session_digest_count ?? message?.debug?.related_summary_count ?? "",
+    ),
   ].join("|");
 }
 
 function getLatestTurnRenderState(state, messages) {
   const latestTurn = getLatestTurnIndexes(messages);
+  const editState = state.ui.latestTurnEdit || {};
+  const isCurrentSessionEdit =
+    Boolean(editState.active) && editState.sessionId === state.currentSessionId;
+  const editingMessageIndex = isCurrentSessionEdit ? Number(editState.messageIndex) : -1;
+  const editDraft = isCurrentSessionEdit ? editState.draft || "" : "";
+  const editOriginalContent = isCurrentSessionEdit ? editState.originalContent || "" : "";
+
   return {
     ...latestTurn,
     isArchived: state.selectedSessionDetail?.status === "archived",
-    editModeKey: isEditingLatestTurn(state) ? "editing" : "idle",
+    editingMessageIndex,
+    editStateKey: isCurrentSessionEdit
+      ? `${editingMessageIndex}|${editOriginalContent}|${editDraft}`
+      : "idle",
     sessionStatusKey: state.selectedSessionDetail?.status || "none",
   };
 }
@@ -487,7 +562,8 @@ function updateMessageRenderCache(sessionId, messages, latestTurnState) {
   messageRenderCache.latestUserIndex = latestTurnState.latestUserIndex;
   messageRenderCache.latestAssistantIndex = latestTurnState.latestAssistantIndex;
   messageRenderCache.sessionStatusKey = latestTurnState.sessionStatusKey;
-  messageRenderCache.editModeKey = latestTurnState.editModeKey;
+  messageRenderCache.editStateKey = latestTurnState.editStateKey;
+  messageRenderCache.editingMessageIndex = latestTurnState.editingMessageIndex;
 }
 
 function renderEmptyState(state, elements) {
@@ -520,10 +596,17 @@ function renderEmptyState(state, elements) {
   updateMessageRenderCache(sessionId, [], getLatestTurnRenderState(state, []));
 }
 
-function rerenderAffectedLatestTurnNodes(elements, messages, latestTurnState, template, indexes) {
+function rerenderAffectedNodes(elements, messages, latestTurnState, inlineEditState, template, state, indexes) {
   const uniqueIndexes = [...new Set(indexes.filter((value) => value >= 0 && value < messages.length))];
   uniqueIndexes.forEach((index) => {
-    const nextNode = buildMessageNode(messages[index], index, latestTurnState, template);
+    const nextNode = buildMessageNode(
+      messages[index],
+      index,
+      latestTurnState,
+      inlineEditState,
+      template,
+      state,
+    );
     const currentNode = elements.messageList.children[index];
     if (currentNode) {
       currentNode.replaceWith(nextNode);
@@ -535,6 +618,7 @@ function renderMessages(state, elements) {
   const sessionId = state.currentSessionId || null;
   const messages = sessionId ? getMessagesForCurrentSession() : [];
   const latestTurnState = getLatestTurnRenderState(state, messages);
+  const inlineEditState = getInlineEditState(state, messages, latestTurnState);
 
   if (!messages.length) {
     renderEmptyState(state, elements);
@@ -551,7 +635,7 @@ function renderMessages(state, elements) {
     messageRenderCache.latestUserIndex === latestTurnState.latestUserIndex &&
     messageRenderCache.latestAssistantIndex === latestTurnState.latestAssistantIndex &&
     messageRenderCache.sessionStatusKey === latestTurnState.sessionStatusKey &&
-    messageRenderCache.editModeKey === latestTurnState.editModeKey;
+    messageRenderCache.editStateKey === latestTurnState.editStateKey;
 
   if (sameSession && sameArrayRef && sameTail && sameActionState) {
     return;
@@ -560,35 +644,73 @@ function renderMessages(state, elements) {
   elements.chatEmptyState.hidden = true;
   elements.chatEmptyState.innerHTML = "";
 
+  const canPatchExistingNodes =
+    sameSession &&
+    sameArrayRef &&
+    sameTail &&
+    elements.messageList.childElementCount === messages.length;
+
+  if (canPatchExistingNodes) {
+    rerenderAffectedNodes(
+      elements,
+      messages,
+      latestTurnState,
+      inlineEditState,
+      elements.messageTemplate,
+      state,
+      [
+        messageRenderCache.latestUserIndex,
+        messageRenderCache.latestAssistantIndex,
+        latestTurnState.latestUserIndex,
+        latestTurnState.latestAssistantIndex,
+        messageRenderCache.editingMessageIndex,
+        latestTurnState.editingMessageIndex,
+      ],
+    );
+    updateMessageRenderCache(sessionId, messages, latestTurnState);
+    return;
+  }
+
   const canAppendOnly =
     sameSession &&
     sameArrayRef &&
     messageRenderCache.sessionStatusKey === latestTurnState.sessionStatusKey &&
-    messageRenderCache.editModeKey === latestTurnState.editModeKey &&
+    messageRenderCache.editStateKey === latestTurnState.editStateKey &&
     messages.length > messageRenderCache.messageCount &&
     elements.messageList.childElementCount === messageRenderCache.messageCount;
 
   if (canAppendOnly) {
-    const previousLatestIndexes = [
+    const previousIndexes = [
       messageRenderCache.latestUserIndex,
       messageRenderCache.latestAssistantIndex,
+      messageRenderCache.editingMessageIndex,
     ];
 
     for (let index = messageRenderCache.messageCount; index < messages.length; index += 1) {
       elements.messageList.appendChild(
-        buildMessageNode(messages[index], index, latestTurnState, elements.messageTemplate),
+        buildMessageNode(
+          messages[index],
+          index,
+          latestTurnState,
+          inlineEditState,
+          elements.messageTemplate,
+          state,
+        ),
       );
     }
 
-    rerenderAffectedLatestTurnNodes(
+    rerenderAffectedNodes(
       elements,
       messages,
       latestTurnState,
+      inlineEditState,
       elements.messageTemplate,
+      state,
       [
-        ...previousLatestIndexes,
+        ...previousIndexes,
         latestTurnState.latestUserIndex,
         latestTurnState.latestAssistantIndex,
+        latestTurnState.editingMessageIndex,
       ],
     );
 
@@ -600,7 +722,14 @@ function renderMessages(state, elements) {
   elements.messageList.innerHTML = "";
   messages.forEach((message, index) => {
     elements.messageList.appendChild(
-      buildMessageNode(message, index, latestTurnState, elements.messageTemplate),
+      buildMessageNode(
+        message,
+        index,
+        latestTurnState,
+        inlineEditState,
+        elements.messageTemplate,
+        state,
+      ),
     );
   });
   updateMessageRenderCache(sessionId, messages, latestTurnState);
