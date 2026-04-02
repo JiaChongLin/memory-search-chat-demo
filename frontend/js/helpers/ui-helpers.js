@@ -1,11 +1,11 @@
-﻿export const COMPOSER_MIN_HEIGHT = 52;
+export const COMPOSER_MIN_HEIGHT = 52;
 export const COMPOSER_MAX_HEIGHT = 188;
 
 export function formatErrorMessage(error) {
   if (error instanceof Error && error.message) {
     return error.message;
   }
-  return "未知错误";
+  return "Unknown error";
 }
 
 export function parseOptionalProjectId(value) {
@@ -20,10 +20,13 @@ export function parseOptionalProjectId(value) {
 }
 
 export function buildAssistantDebug(responseData) {
+  const relatedSessionDigestCount =
+    responseData.related_session_digest_count ?? responseData.related_summary_count ?? 0;
+
   return {
     session_id: responseData.session_id,
     context_scope: responseData.context_scope,
-    related_summary_count: responseData.related_summary_count,
+    related_session_digest_count: relatedSessionDigestCount,
     used_live_model: responseData.used_live_model,
     fallback_reason: responseData.fallback_reason,
     search_triggered: responseData.search_triggered,

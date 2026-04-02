@@ -33,7 +33,7 @@ export function createBootstrap() {
   const runtime = createAppRuntime({
     syncSelectedSessionDetail: managementController.syncSelectedSessionDetail,
     ensureSessionMessages: managementController.ensureSessionMessages,
-    ensureSessionSummary: managementController.ensureSessionSummary,
+    ensureSessionMemoryState: managementController.ensureSessionMemoryState,
   });
 
   managementController.configureRuntime({

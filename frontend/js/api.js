@@ -1,4 +1,4 @@
-﻿function buildUrl(baseUrl, path, query) {
+function buildUrl(baseUrl, path, query) {
   const url = new URL(path, `${baseUrl.replace(/\/+$/, "")}/`);
 
   if (query) {
@@ -111,7 +111,9 @@ export function getSession(baseUrl, sessionId) {
   return requestJson(baseUrl, `/api/sessions/${sessionId}`, { method: "GET" });
 }
 
-export function getSessionSummary(baseUrl, sessionId) {
+// The backend route name stays /summary for compatibility, but the payload now
+// clearly represents the session's derived memory state: working_memory + session_digest.
+export function getSessionMemoryState(baseUrl, sessionId) {
   return requestJson(baseUrl, `/api/sessions/${sessionId}/summary`, { method: "GET" });
 }
 

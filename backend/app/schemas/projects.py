@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
@@ -13,16 +13,41 @@ from backend.app.domain.constants import (
 
 
 class ProjectCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = Field(default=None, max_length=4000)
-    instruction: Optional[str] = Field(default=None, max_length=4000)
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Human-facing project name. Weak prompt signal only.",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        max_length=4000,
+        description="Human-readable project note shown in UI. Never injected into model context.",
+    )
+    instruction: Optional[str] = Field(
+        default=None,
+        max_length=4000,
+        description="Project-level model instruction. Primary prompt text for chats in this project.",
+    )
     access_mode: ProjectAccessMode = PROJECT_ACCESS_OPEN
 
 
 class ProjectUpdateRequest(BaseModel):
-    name: Optional[str] = Field(default=None, max_length=255)
-    description: Optional[str] = Field(default=None, max_length=4000)
-    instruction: Optional[str] = Field(default=None, max_length=4000)
+    name: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="Human-facing project name. Weak prompt signal only.",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        max_length=4000,
+        description="Human-readable project note shown in UI. Never injected into model context.",
+    )
+    instruction: Optional[str] = Field(
+        default=None,
+        max_length=4000,
+        description="Project-level model instruction. Primary prompt text for chats in this project.",
+    )
 
 
 class ProjectResponse(BaseModel):
@@ -30,8 +55,14 @@ class ProjectResponse(BaseModel):
 
     id: int
     name: str
-    description: Optional[str] = None
-    instruction: Optional[str] = None
+    description: Optional[str] = Field(
+        default=None,
+        description="Human-readable project note for UI display only; excluded from model context.",
+    )
+    instruction: Optional[str] = Field(
+        default=None,
+        description="Project-level instruction used by the model during chats in this project.",
+    )
     access_mode: ProjectAccessMode
     status: RecordStatus
     created_at: datetime

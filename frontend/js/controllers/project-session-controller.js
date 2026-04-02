@@ -9,7 +9,7 @@ import {
   deleteSession,
   getSession,
   getSessionMessages,
-  getSessionSummary,
+  getSessionMemoryState,
   listProjectStableFacts,
   moveSession,
   updateProject,
@@ -193,7 +193,7 @@ export function createProjectSessionController({
     }
   }
 
-  async function ensureSessionSummary(sessionId, options = {}) {
+  async function ensureSessionMemoryState(sessionId, options = {}) {
     if (!sessionId) {
       return;
     }
@@ -204,7 +204,7 @@ export function createProjectSessionController({
     }
 
     try {
-      const payload = await getSessionSummary(getBaseUrl(), sessionId);
+      const payload = await getSessionMemoryState(getBaseUrl(), sessionId);
       setMemoryForSession(sessionId, payload);
     } catch (error) {
       if (error.status === 404) {
@@ -530,7 +530,7 @@ export function createProjectSessionController({
     if (session) {
       syncProjectSelection(session.project_id);
     }
-    await ensureSessionSummary(sessionId, { force: true });
+    await ensureSessionMemoryState(sessionId, { force: true });
     await ensureSessionMessages(sessionId, { force: false });
   }
 
@@ -859,7 +859,7 @@ export function createProjectSessionController({
     configureRuntime,
     closeProjectModal,
     ensureSessionMessages,
-    ensureSessionSummary,
+    ensureSessionMemoryState,
     syncSelectedSessionDetail,
     handleProjectSubmit,
     handleNewChatClick,

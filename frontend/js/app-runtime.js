@@ -1,4 +1,4 @@
-﻿import { healthCheck, listProjects, listSessions, normalizeBaseUrl } from "./api.js";
+import { healthCheck, listProjects, listSessions, normalizeBaseUrl } from "./api.js";
 import {
   clearNotice,
   getState,
@@ -16,7 +16,7 @@ import { formatErrorMessage } from "./helpers/ui-helpers.js";
 export function createAppRuntime({
   syncSelectedSessionDetail,
   ensureSessionMessages,
-  ensureSessionSummary,
+  ensureSessionMemoryState,
 }) {
   function getBaseUrl() {
     return normalizeBaseUrl(getState().backendBaseUrl);
@@ -37,14 +37,14 @@ export function createAppRuntime({
       const baseUrl = getBaseUrl();
       await healthCheck(baseUrl);
       setBackendBaseUrl(baseUrl);
-      setHealth({ status: "success", label: "连接正常", environment: "connected" });
+      setHealth({ status: "success", label: "Connected", environment: "connected" });
       if (!silent) {
         clearNotice("global");
       }
     } catch (error) {
-      setHealth({ status: "warning", label: "后端不可用", environment: "unavailable" });
+      setHealth({ status: "warning", label: "Backend unavailable", environment: "unavailable" });
       if (!silent) {
-        setNotice("global", `后端连接失败：${formatErrorMessage(error)}`, "danger");
+        setNotice("global", `Backend connection failed: ${formatErrorMessage(error)}`, "danger");
       }
     } finally {
       setBusy("health", false);
@@ -70,7 +70,7 @@ export function createAppRuntime({
         clearNotice("projects");
       }
     } catch (error) {
-      setNotice("projects", `加载项目失败：${formatErrorMessage(error)}`, "danger");
+      setNotice("projects", `Failed to load projects: ${formatErrorMessage(error)}`, "danger");
     } finally {
       setBusy("projects", false);
     }
@@ -85,7 +85,7 @@ export function createAppRuntime({
 
       const state = getState();
       if (state.currentSessionId) {
-        await ensureSessionSummary(state.currentSessionId, {
+        await ensureSessionMemoryState(state.currentSessionId, {
           force: Boolean(options.forceSummary),
         });
 
@@ -100,7 +100,7 @@ export function createAppRuntime({
         clearNotice("sessions");
       }
     } catch (error) {
-      setNotice("sessions", `加载会话失败：${formatErrorMessage(error)}`, "danger");
+      setNotice("sessions", `Failed to load sessions: ${formatErrorMessage(error)}`, "danger");
     } finally {
       setBusy("sessions", false);
     }

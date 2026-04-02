@@ -82,7 +82,7 @@
             <div class="secondary-body">
               <div class="mini-head">
                 <h3>当前会话派生记忆</h3>
-                <span class="badge soft">memory layers</span>
+                <span class="badge soft">derived memory</span>
               </div>
               <div class="memory-stack">
                 <div class="memory-block">
@@ -134,7 +134,7 @@
               </button>
               <button
                 class="quick-chip"
-                data-prompt="解释一下 related_summary_count 为什么会变化，以及它现在对应哪些 session_digest"
+                data-prompt="解释一下 related_session_digest_count 为什么会变化，以及它现在对应哪些 session_digest"
                 type="button"
               >
                 测试调试字段
@@ -181,12 +181,13 @@
           <label class="field-label" for="projectNameInput">项目名称</label>
           <input id="projectNameInput" class="text-input" type="text" maxlength="255" required />
 
-          <label class="field-label" for="projectInstructionInput">项目级指令（可选）</label>
+          <label class="field-label" for="projectInstructionInput">项目级指令（给模型，可选）</label>
           <textarea id="projectInstructionInput" class="text-area" rows="4" maxlength="4000" placeholder="例如：默认用中文回答；优先站在产品经理视角；输出保持简洁可执行。"></textarea>
-          <p class="hint-text">这是项目级行为指令，会在该项目下会话聊天时注入 system context。</p>
+          <p class="hint-text">这是项目级模型指令，是项目层主提示词；聊天时会注入 system context。</p>
 
-          <label class="field-label" for="projectDescriptionInput">项目说明（可选）</label>
-          <textarea id="projectDescriptionInput" class="text-area" rows="3" maxlength="4000" placeholder="给人看的项目背景说明，不作为主提示词。"></textarea>
+          <label class="field-label" for="projectDescriptionInput">项目说明（给人看，可选）</label>
+          <textarea id="projectDescriptionInput" class="text-area" rows="3" maxlength="4000" placeholder="给人看的项目背景说明、协作备注或业务上下文，不会注入模型。"></textarea>
+          <p class="hint-text">项目说明只用于界面展示和人工阅读，不会进入模型上下文。</p>
 
           <label class="field-label" for="projectAccessSelect">项目访问模式</label>
           <select id="projectAccessSelect" class="select-input">

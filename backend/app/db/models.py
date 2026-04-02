@@ -33,8 +33,13 @@ class Project(Base):
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Human-facing project title. It can be a weak prompt signal via project_name,
+    # but it is primarily a label for people navigating the workspace.
     name: Mapped[str] = mapped_column(String(255))
+    # Human-readable project note for people browsing the workspace.
+    # It is stored and returned to the UI, but intentionally excluded from model context.
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Project-level model instruction. This is the only project text field that enters chat model context.
     instruction: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     access_mode: Mapped[str] = mapped_column(String(32), default=PROJECT_ACCESS_OPEN)
     status: Mapped[str] = mapped_column(String(20), default=STATUS_ACTIVE, index=True)
