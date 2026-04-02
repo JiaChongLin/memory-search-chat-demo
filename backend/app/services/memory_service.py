@@ -78,6 +78,32 @@ class MemoryService:
         records = self._list_summary_records(session_id)
         return self._build_snapshot_from_records(records)
 
+    def rebuild_memory_snapshot_from_current_messages(self, session_id: str) -> MemorySnapshot:
+        session = self._db.get(ChatSession, session_id)
+        if session is None:
+            return MemorySnapshot(working_memory=None, session_digest=None, summary_updated_at=None)
+
+        messages = self._list_messages(session_id)
+        if messages and self._summary_enabled:
+            snapshot = self._save_memory_snapshot(
+                session=session,
+                working_memory=self._build_working_memory(messages),
+                session_digest=self.build_session_digest(
+                    session_id=session_id,
+                    messages=messages,
+                    previous_digest=None,
+                ),
+            )
+        else:
+            snapshot = self._save_memory_snapshot(
+                session=session,
+                working_memory=None,
+                session_digest=None,
+            )
+
+        self._db.flush()
+        return snapshot
+
     def append_turn(
         self,
         session_id: str,

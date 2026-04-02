@@ -1,7 +1,8 @@
-import pytest
+﻿import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from backend.app.services.llm_service import LLMReply, LLMService
 from backend.app.services.search_service import SearchResult, SearchService
 
 from backend.app.db.models import (
@@ -486,3 +487,151 @@ def test_move_session_out_of_project(client: TestClient) -> None:
 
     assert move_response.status_code == 200
     assert move_response.json()["project_id"] is None
+
+
+def test_regenerate_latest_turn_replaces_last_assistant_instead_of_appending(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    replies = [
+        LLMReply(content="first reply", used_live_model=False, fallback_reason="captured"),
+        LLMReply(content="regenerated reply", used_live_model=False, fallback_reason="captured"),
+    ]
+
+    def fake_generate_reply(
+        self,
+        user_message,
+        history,
+        stable_facts=None,
+        working_memory=None,
+        related_session_digests=None,
+        project_name=None,
+        project_instruction=None,
+        search_results=None,
+    ):
+        return replies.pop(0)
+
+    monkeypatch.setattr(LLMService, "generate_reply", fake_generate_reply)
+
+    session_id = client.post("/api/sessions", json={"title": "Latest turn"}).json()["id"]
+    first_response = client.post(
+        "/api/chat",
+        json={"session_id": session_id, "message": "original question"},
+    )
+    assert first_response.status_code == 200
+
+    regenerate_response = client.post(f"/api/sessions/{session_id}/latest-turn/regenerate")
+
+    assert regenerate_response.status_code == 200
+    assert regenerate_response.json()["reply"] == "regenerated reply"
+
+    messages = client.get(f"/api/sessions/{session_id}/messages").json()
+    assert len(messages) == 2
+    assert [item["role"] for item in messages] == ["user", "assistant"]
+    assert messages[0]["content"] == "original question"
+    assert messages[1]["content"] == "regenerated reply"
+
+    session = client.get(f"/api/sessions/{session_id}").json()
+    assert session["message_count"] == 2
+
+
+def test_edit_latest_turn_replaces_last_user_and_assistant_and_rebuilds_summary(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    replies = [
+        LLMReply(content="original reply", used_live_model=False, fallback_reason="captured"),
+        LLMReply(content="edited reply", used_live_model=False, fallback_reason="captured"),
+    ]
+
+    def fake_generate_reply(
+        self,
+        user_message,
+        history,
+        stable_facts=None,
+        working_memory=None,
+        related_session_digests=None,
+        project_name=None,
+        project_instruction=None,
+        search_results=None,
+    ):
+        return replies.pop(0)
+
+    monkeypatch.setattr(LLMService, "generate_reply", fake_generate_reply)
+
+    session_id = client.post("/api/sessions", json={"title": "Editable turn"}).json()["id"]
+    first_response = client.post(
+        "/api/chat",
+        json={"session_id": session_id, "message": "original latest question"},
+    )
+    assert first_response.status_code == 200
+
+    edit_response = client.post(
+        f"/api/sessions/{session_id}/latest-turn/edit",
+        json={"message": "edited latest question"},
+    )
+
+    assert edit_response.status_code == 200
+    assert edit_response.json()["reply"] == "edited reply"
+
+    messages = client.get(f"/api/sessions/{session_id}/messages").json()
+    assert len(messages) == 2
+    assert messages[0]["role"] == "user"
+    assert messages[0]["content"] == "edited latest question"
+    assert messages[1]["role"] == "assistant"
+    assert messages[1]["content"] == "edited reply"
+    assert all("original latest question" not in item["content"] for item in messages)
+
+    summary = client.get(f"/api/sessions/{session_id}/summary").json()
+    assert summary["session_digest"] is not None
+    assert "edited latest question" in summary["session_digest"]
+    assert "original latest question" not in summary["session_digest"]
+
+    session = client.get(f"/api/sessions/{session_id}").json()
+    assert session["message_count"] == 2
+
+
+def test_regenerate_latest_turn_returns_409_when_no_latest_turn(client: TestClient) -> None:
+    session_id = client.post("/api/sessions", json={"title": "Empty latest turn"}).json()["id"]
+
+    response = client.post(f"/api/sessions/{session_id}/latest-turn/regenerate")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == "No latest turn is available for regenerate or edit."
+
+
+def test_edit_latest_turn_returns_409_when_tail_is_not_user_assistant(
+    client: TestClient,
+    session_local,
+) -> None:
+    session_id = client.post("/api/sessions", json={"title": "Broken tail"}).json()["id"]
+
+    with session_local() as db:
+        db.add(ChatMessage(session_id=session_id, role="user", content="first user", sources_json="[]"))
+        db.add(ChatMessage(session_id=session_id, role="user", content="second user", sources_json="[]"))
+        db.commit()
+
+    response = client.post(
+        f"/api/sessions/{session_id}/latest-turn/edit",
+        json={"message": "edited question"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == "Latest turn must end with a user -> assistant pair."
+
+
+@pytest.mark.parametrize("session_id_factory", ["missing", "archived"])
+def test_latest_turn_actions_require_existing_active_session(
+    client: TestClient,
+    session_id_factory: str,
+) -> None:
+    if session_id_factory == "missing":
+        session_id = "missing-session"
+    else:
+        session_id = client.post("/api/sessions", json={"title": "Archive me"}).json()["id"]
+        assert client.post(f"/api/sessions/{session_id}/archive").status_code == 200
+
+    response = client.post(f"/api/sessions/{session_id}/latest-turn/regenerate")
+
+    assert response.status_code == 409
+

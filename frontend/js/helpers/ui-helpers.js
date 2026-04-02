@@ -1,4 +1,4 @@
-export const COMPOSER_MIN_HEIGHT = 52;
+﻿export const COMPOSER_MIN_HEIGHT = 52;
 export const COMPOSER_MAX_HEIGHT = 188;
 
 export function formatErrorMessage(error) {
@@ -61,6 +61,29 @@ export function mapApiMessage(message) {
     content: message.content,
     timestamp: message.created_at,
     sources,
+  };
+}
+
+export function getLatestTurnIndexes(messages) {
+  if (!Array.isArray(messages) || messages.length < 2) {
+    return {
+      hasLatestTurn: false,
+      latestUserIndex: -1,
+      latestAssistantIndex: -1,
+    };
+  }
+
+  const latestUserIndex = messages.length - 2;
+  const latestAssistantIndex = messages.length - 1;
+  const latestUserMessage = messages[latestUserIndex];
+  const latestAssistantMessage = messages[latestAssistantIndex];
+  const hasLatestTurn =
+    latestUserMessage?.role === "user" && latestAssistantMessage?.role === "assistant";
+
+  return {
+    hasLatestTurn,
+    latestUserIndex: hasLatestTurn ? latestUserIndex : -1,
+    latestAssistantIndex: hasLatestTurn ? latestAssistantIndex : -1,
   };
 }
 

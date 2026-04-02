@@ -24,6 +24,10 @@ class SessionProjectMoveRequest(BaseModel):
     project_id: Optional[int] = None
 
 
+class LatestTurnEditRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=4000)
+
+
 class SessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

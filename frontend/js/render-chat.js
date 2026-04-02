@@ -19,6 +19,7 @@ import {
   getMemoryForSession,
   getMessagesForCurrentSession,
 } from "./state.js";
+import { getLatestTurnIndexes } from "./helpers/ui-helpers.js";
 
 const messageRenderCache = {
   sessionId: null,
@@ -26,6 +27,10 @@ const messageRenderCache = {
   messageCount: 0,
   lastMessageKey: "",
   emptyStateKey: "",
+  latestUserIndex: -1,
+  latestAssistantIndex: -1,
+  sessionStatusKey: "",
+  editModeKey: "",
 };
 
 function formatTime(timestamp) {
@@ -109,7 +114,7 @@ function renderHeader(state, elements) {
   elements.currentSessionLabel.textContent = getSessionTitle(session.title);
   elements.currentProjectLabel.className = `badge ${project ? "scope" : "soft"}`;
   elements.currentProjectLabel.textContent = project
-    ? `${project.name} · ${getAccessModeLabel(project.access_mode)}`
+    ? `${project.name} / ${getAccessModeLabel(project.access_mode)}`
     : "无项目会话";
   elements.currentVisibilityBadge.className = `badge ${session.is_private ? "danger" : "soft"}`;
   elements.currentVisibilityBadge.textContent = getPrivacyLabel(session.is_private);
@@ -205,7 +210,7 @@ function renderMemory(state, elements) {
     elements.workingMemoryBadge,
     memory?.working_memory || null,
     hasSession
-      ? "\u5f53\u524d\u8fd8\u6ca1\u6709 working_memory\uff08\u8fd0\u884c\u65f6\u8854\u63a5\u8bb0\u5fc6\uff09\u3002\u5b83\u7528\u4e8e\u5ef6\u7eed\u5f53\u524d\u4f1a\u8bdd\uff0c\u4e0d\u7b49\u4e8e\u6d88\u606f\u5386\u53f2\u3002"
+      ? "当前还没有 working_memory（运行时衔接记忆）。它用于延续当前会话，不等于消息历史。"
       : "当前没有选中会话。请先在左侧导航中创建或选择会话。",
   );
 
@@ -214,8 +219,16 @@ function renderMemory(state, elements) {
     elements.sessionDigestBadge,
     memory?.session_digest || null,
     hasSession
-      ? "\u5f53\u524d\u8fd8\u6ca1\u6709 session_digest\uff08\u8de8\u4f1a\u8bdd\u6458\u8981\uff09\u3002\u5b83\u7528\u4e8e\u8de8\u4f1a\u8bdd\u5f15\u7528\uff0c\u4e0d\u7b49\u4e8e\u6d88\u606f\u5386\u53f2\u3002"
+      ? "当前还没有 session_digest（跨会话摘要）。它用于跨会话引用，不等于消息历史。"
       : "当前没有选中会话。请先在左侧导航中创建或选择会话。",
+  );
+}
+
+function isEditingLatestTurn(state) {
+  return Boolean(
+    state.ui.latestTurnEdit?.active &&
+      state.ui.latestTurnEdit.sessionId &&
+      state.ui.latestTurnEdit.sessionId === state.currentSessionId,
   );
 }
 
@@ -223,13 +236,29 @@ function renderComposerState(state, elements) {
   const session = state.selectedSessionDetail;
   const missingSelection = !session;
   const locked = session?.status === "archived";
+  const editingLatestTurn = isEditingLatestTurn(state);
   const disabled = state.busy.chat || missingSelection || locked;
 
   elements.sendButton.disabled = disabled;
+  elements.sendButton.textContent = editingLatestTurn
+    ? "\u4fdd\u5b58\u5e76\u91cd\u7b54"
+    : "\u53d1\u9001";
+  elements.sendButton.textContent = editingLatestTurn ? "保存并重答" : "发送";
   elements.messageInput.disabled = disabled;
 
+  if (elements.cancelLatestTurnEditButton) {
+    elements.cancelLatestTurnEditButton.textContent = "\u53d6\u6d88\u7f16\u8f91";
+    elements.cancelLatestTurnEditButton.textContent = "取消编辑";
+    elements.cancelLatestTurnEditButton.className = editingLatestTurn
+      ? "ghost-button"
+      : "ghost-button hidden";
+    elements.cancelLatestTurnEditButton.disabled = state.busy.chat || missingSelection;
+  }
+
   if (state.busy.chat) {
-    elements.composerHint.textContent = "请求进行中，请稍候...";
+    elements.composerHint.textContent = editingLatestTurn
+      ? "正在替换最新一轮并重新生成回复，请稍候..."
+      : "请求进行中，请稍候...";
     return;
   }
 
@@ -245,8 +274,21 @@ function renderComposerState(state, elements) {
     return;
   }
 
+  if (editingLatestTurn) {
+    elements.composerHint.textContent =
+      "\u6b63\u5728\u7f16\u8f91\u6700\u65b0\u7528\u6237\u6d88\u606f\uff0c\u63d0\u4ea4\u540e\u4f1a\u66ff\u6362\u6700\u65b0\u4e00\u8f6e\u5e76\u91cd\u65b0\u751f\u6210\u56de\u590d\u3002";
+    elements.messageInput.placeholder =
+      "\u7f16\u8f91\u6700\u65b0\u7528\u6237\u6d88\u606f\uff0c\u7136\u540e\u70b9\u51fb\u201c\u4fdd\u5b58\u5e76\u91cd\u7b54\u201d\u3002";
+    return;
+      "正在编辑最新用户消息，提交后会替换最新一轮并重新生成回复。";
+    elements.messageInput.placeholder = "编辑最新用户消息，然后点击“保存并重答”。";
+    elements.messageInput.placeholder = "?????????????????????";
+    return;
+  }
+
   elements.composerHint.textContent = "Shift + Enter 换行，Enter 发送。";
-  elements.messageInput.placeholder = "\u7ee7\u7eed\u5f53\u524d\u4f1a\u8bdd\uff0c\u89c2\u5bdf working_memory\u3001session_digest\u3001sources \u548c debug \u5b57\u6bb5\u53d8\u5316\u3002";
+  elements.messageInput.placeholder =
+    "继续当前会话，观察 working_memory、session_digest、sources 和 debug 字段变化。";
 }
 
 function renderNotice(state, elements) {
@@ -304,13 +346,93 @@ function buildSourceNode(source) {
   return link;
 }
 
-function buildMessageNode(message, template) {
+function buildMessageActionButton({
+  label,
+  action,
+  messageIndex,
+  disabled = false,
+  title = "",
+}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "message-action-button ghost-button";
+  button.dataset.messageAction = action;
+  button.dataset.messageIndex = String(messageIndex);
+  button.textContent = label;
+  button.title = title || label;
+  button.setAttribute("aria-label", title || label);
+  button.disabled = disabled;
+  return button;
+}
+
+function buildMessageActions(index, message, latestTurnState) {
+  const isLatestUser = latestTurnState.latestUserIndex === index;
+  const isLatestAssistant = latestTurnState.latestAssistantIndex === index;
+  const container = document.createElement("div");
+  container.className = "message-actions";
+
+  const copyTitle = message.role === "assistant" ? "复制最新助手消息" : "复制最新用户消息";
+  container.appendChild(
+    buildMessageActionButton({
+      label: "复制",
+      action: "copy-message",
+      messageIndex: index,
+      title: copyTitle,
+    }),
+  );
+
+  if (isLatestUser) {
+    container.appendChild(
+      buildMessageActionButton({
+        label: "编辑消息",
+        action: "edit-latest-turn",
+        messageIndex: index,
+        disabled: latestTurnState.isArchived,
+        title: latestTurnState.isArchived
+          ? "当前会话已归档，不能编辑最新一轮。"
+          : "编辑最新用户消息",
+      }),
+    );
+  }
+
+  if (isLatestAssistant) {
+    container.appendChild(
+      buildMessageActionButton({
+        label: "重答",
+        action: "regenerate-latest-turn",
+        messageIndex: index,
+        disabled: latestTurnState.isArchived,
+        title: latestTurnState.isArchived
+          ? "当前会话已归档，不能重答最新一轮。"
+          : "重新生成最新助手回复",
+      }),
+    );
+  }
+
+  return container;
+}
+
+function buildMessageNode(message, index, latestTurnState, template) {
   const node = template.content.firstElementChild.cloneNode(true);
   node.classList.add(`message-${message.role}`);
+
+  const isLatestUser = latestTurnState.latestUserIndex === index;
+  const isLatestAssistant = latestTurnState.latestAssistantIndex === index;
+  node.classList.toggle("message-card-latest-turn", isLatestUser || isLatestAssistant);
+  node.classList.toggle("message-card-latest-user", isLatestUser);
+  node.classList.toggle("message-card-latest-assistant", isLatestAssistant);
 
   node.querySelector(".message-role").textContent = getRoleLabel(message.role);
   node.querySelector(".message-time").textContent = formatTime(message.timestamp);
   node.querySelector(".message-content").textContent = message.content;
+
+  const actions = buildMessageActions(index, message, latestTurnState);
+  const actionsContainer = node.querySelector(".message-actions");
+  if (!actions) {
+    actionsContainer.remove();
+  } else {
+    actionsContainer.replaceWith(actions);
+  }
 
   const metaContainer = node.querySelector(".message-meta");
   const metaItems = buildDebugItems(message);
@@ -344,7 +466,17 @@ function getMessageKey(message) {
   ].join("|");
 }
 
-function updateMessageRenderCache(sessionId, messages) {
+function getLatestTurnRenderState(state, messages) {
+  const latestTurn = getLatestTurnIndexes(messages);
+  return {
+    ...latestTurn,
+    isArchived: state.selectedSessionDetail?.status === "archived",
+    editModeKey: isEditingLatestTurn(state) ? "editing" : "idle",
+    sessionStatusKey: state.selectedSessionDetail?.status || "none",
+  };
+}
+
+function updateMessageRenderCache(sessionId, messages, latestTurnState) {
   messageRenderCache.sessionId = sessionId;
   messageRenderCache.messagesRef = messages;
   messageRenderCache.messageCount = messages.length;
@@ -352,6 +484,10 @@ function updateMessageRenderCache(sessionId, messages) {
     ? getMessageKey(messages[messages.length - 1])
     : "";
   messageRenderCache.emptyStateKey = sessionId ? "empty-session" : "empty-selection";
+  messageRenderCache.latestUserIndex = latestTurnState.latestUserIndex;
+  messageRenderCache.latestAssistantIndex = latestTurnState.latestAssistantIndex;
+  messageRenderCache.sessionStatusKey = latestTurnState.sessionStatusKey;
+  messageRenderCache.editModeKey = latestTurnState.editModeKey;
 }
 
 function renderEmptyState(state, elements) {
@@ -381,12 +517,24 @@ function renderEmptyState(state, elements) {
           <span>左侧导航会按项目和未归属会话组织列表。选中会话后，右侧会切换到对应聊天主区。</span>
         </div>
       `;
-  updateMessageRenderCache(sessionId, []);
+  updateMessageRenderCache(sessionId, [], getLatestTurnRenderState(state, []));
+}
+
+function rerenderAffectedLatestTurnNodes(elements, messages, latestTurnState, template, indexes) {
+  const uniqueIndexes = [...new Set(indexes.filter((value) => value >= 0 && value < messages.length))];
+  uniqueIndexes.forEach((index) => {
+    const nextNode = buildMessageNode(messages[index], index, latestTurnState, template);
+    const currentNode = elements.messageList.children[index];
+    if (currentNode) {
+      currentNode.replaceWith(nextNode);
+    }
+  });
 }
 
 function renderMessages(state, elements) {
   const sessionId = state.currentSessionId || null;
   const messages = sessionId ? getMessagesForCurrentSession() : [];
+  const latestTurnState = getLatestTurnRenderState(state, messages);
 
   if (!messages.length) {
     renderEmptyState(state, elements);
@@ -399,8 +547,13 @@ function renderMessages(state, elements) {
   const sameTail =
     messageRenderCache.messageCount === messages.length &&
     messageRenderCache.lastMessageKey === lastMessageKey;
+  const sameActionState =
+    messageRenderCache.latestUserIndex === latestTurnState.latestUserIndex &&
+    messageRenderCache.latestAssistantIndex === latestTurnState.latestAssistantIndex &&
+    messageRenderCache.sessionStatusKey === latestTurnState.sessionStatusKey &&
+    messageRenderCache.editModeKey === latestTurnState.editModeKey;
 
-  if (sameSession && sameArrayRef && sameTail) {
+  if (sameSession && sameArrayRef && sameTail && sameActionState) {
     return;
   }
 
@@ -410,23 +563,47 @@ function renderMessages(state, elements) {
   const canAppendOnly =
     sameSession &&
     sameArrayRef &&
+    messageRenderCache.sessionStatusKey === latestTurnState.sessionStatusKey &&
+    messageRenderCache.editModeKey === latestTurnState.editModeKey &&
     messages.length > messageRenderCache.messageCount &&
     elements.messageList.childElementCount === messageRenderCache.messageCount;
 
   if (canAppendOnly) {
+    const previousLatestIndexes = [
+      messageRenderCache.latestUserIndex,
+      messageRenderCache.latestAssistantIndex,
+    ];
+
     for (let index = messageRenderCache.messageCount; index < messages.length; index += 1) {
-      elements.messageList.appendChild(buildMessageNode(messages[index], elements.messageTemplate));
+      elements.messageList.appendChild(
+        buildMessageNode(messages[index], index, latestTurnState, elements.messageTemplate),
+      );
     }
-    updateMessageRenderCache(sessionId, messages);
+
+    rerenderAffectedLatestTurnNodes(
+      elements,
+      messages,
+      latestTurnState,
+      elements.messageTemplate,
+      [
+        ...previousLatestIndexes,
+        latestTurnState.latestUserIndex,
+        latestTurnState.latestAssistantIndex,
+      ],
+    );
+
+    updateMessageRenderCache(sessionId, messages, latestTurnState);
     elements.messageList.scrollTop = elements.messageList.scrollHeight;
     return;
   }
 
   elements.messageList.innerHTML = "";
-  messages.forEach((message) => {
-    elements.messageList.appendChild(buildMessageNode(message, elements.messageTemplate));
+  messages.forEach((message, index) => {
+    elements.messageList.appendChild(
+      buildMessageNode(message, index, latestTurnState, elements.messageTemplate),
+    );
   });
-  updateMessageRenderCache(sessionId, messages);
+  updateMessageRenderCache(sessionId, messages, latestTurnState);
   elements.messageList.scrollTop = elements.messageList.scrollHeight;
 }
 
@@ -438,4 +615,3 @@ export function renderChat(state, elements) {
   renderComposerState(state, elements);
   renderMessages(state, elements);
 }
-

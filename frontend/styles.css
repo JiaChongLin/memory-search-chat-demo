@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #f1ece4;
   --bg-accent: #dce8e2;
   --panel: rgba(255, 250, 244, 0.88);
@@ -1387,4 +1387,79 @@ h3 {
 
 .stable-fact-editor-actions {
   justify-content: flex-start;
+}
+
+
+.message-head {
+  align-items: flex-start;
+}
+
+.message-head-main {
+  display: grid;
+  gap: 4px;
+}
+
+.message-card-latest-turn {
+  box-shadow: inset 0 0 0 1px rgba(20, 107, 99, 0.12);
+}
+
+.message-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.message-action-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: rgba(23, 47, 53, 0.08);
+  color: var(--text-body);
+  font-size: 0.78rem;
+}
+
+.message-action-button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.composer-action-buttons {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (min-width: 641px) {
+  .message-card-latest-turn .message-actions {
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+
+  .message-card-latest-turn:hover .message-actions,
+  .message-card-latest-turn:focus-within .message-actions {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .message-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .message-actions,
+  .composer-action-buttons {
+    width: 100%;
+  }
+
+  .message-action-button,
+  .composer-action-buttons .ghost-button,
+  .composer-action-buttons .primary-button {
+    flex: 1 1 0;
+  }
 }
