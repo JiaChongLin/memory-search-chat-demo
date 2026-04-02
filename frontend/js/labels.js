@@ -1,64 +1,64 @@
-﻿const ACCESS_MODE_LABELS = {
-  open: "开放项目",
-  project_only: "仅限项目",
+const ACCESS_MODE_LABELS = {
+  open: "Open project",
+  project_only: "Project only",
 };
 
 const STATUS_LABELS = {
-  active: "启用中",
-  archived: "已归档",
+  active: "Active",
+  archived: "Archived",
 };
 
 const DEBUG_FIELD_LABELS = {
-  session_id: "会话 ID",
-  current_project_access: "当前项目访问模式",
-  current_session_visibility: "当前会话可见性",
-  context_scope: "上下文解析结果",
-  related_summary_count: "相关会话摘要数量",
-  used_live_model: "是否直连模型",
-  fallback_reason: "降级原因",
-  search_triggered: "是否触发搜索",
-  search_used: "是否使用搜索结果",
-  working_memory_cached: "working_memory 缓存",
-  session_digest_cached: "session_digest 缓存",
+  session_id: "Session ID",
+  current_project_access: "Current project access",
+  current_session_visibility: "Current session visibility",
+  context_scope: "Context scope",
+  related_session_digest_count: "Related session_digest count",
+  used_live_model: "Live model used",
+  fallback_reason: "Fallback reason",
+  search_triggered: "Search triggered",
+  search_used: "Search results used",
+  working_memory_state: "working_memory state",
+  session_digest_state: "session_digest state",
 };
 
 const FALLBACK_REASON_LABELS = {
-  missing_api_key: "缺少 API Key",
-  live_model_disabled: "已关闭在线模型",
-  provider_request_failed: "在线模型请求失败",
+  missing_api_key: "Missing API key",
+  live_model_disabled: "Live model disabled",
+  provider_request_failed: "Live model request failed",
 };
 
 export function getAccessModeLabel(value) {
-  return ACCESS_MODE_LABELS[value] || value || "未知";
+  return ACCESS_MODE_LABELS[value] || value || "Unknown";
 }
 
 export function getAccessModeHelpText(value) {
   if (value === "project_only") {
-    return "只能访问项目内历史，且项目内会话对项目外不可见。";
+    return "Can only read history from the same project, and project sessions stay invisible outside the project.";
   }
   if (value === "open") {
-    return "可访问外部可访问历史，且项目内非私密会话也可被外部访问。";
+    return "Can read externally visible history, and non-private sessions in this project can also be read from outside.";
   }
-  return "未识别访问模式。";
+  return "Unknown access mode.";
 }
 
 export function getStatusLabel(value) {
-  return STATUS_LABELS[value] || value || "未知";
+  return STATUS_LABELS[value] || value || "Unknown";
 }
 
 export function getPrivacyLabel(isPrivate) {
-  return isPrivate ? "私密会话" : "共享会话";
+  return isPrivate ? "Private session" : "Shared session";
 }
 
 export function getPrivacyHelpText(isPrivate) {
   return isPrivate
-    ? "不会被其他会话访问，但自己仍然可以访问其他允许访问的历史。"
-    : "可被其他允许访问的会话读取，也可以读取其他允许访问的历史。";
+    ? "This session cannot be read by other sessions, but it can still read other allowed history."
+    : "This session can be read by other allowed sessions and can also read other allowed history.";
 }
 
 export function getCurrentProjectAccessLabel(project) {
   if (!project) {
-    return "无项目，按开放历史处理";
+    return "No project; treat as open history.";
   }
   return getAccessModeLabel(project.access_mode);
 }
@@ -71,25 +71,25 @@ export function getBoolLabel(value) {
   if (value === undefined || value === null) {
     return "-";
   }
-  return value ? "是" : "否";
+  return value ? "Yes" : "No";
 }
 
-export function getMemoryCachedLabel(hasValue) {
-  return hasValue ? "已缓存" : "未缓存";
+export function getDerivedMemoryStatusLabel(hasValue) {
+  return hasValue ? "Generated" : "Not generated";
 }
 
 export function getModelUsageLabel(usedLiveModel) {
-  return usedLiveModel ? "在线模型" : "降级回复";
+  return usedLiveModel ? "Live model" : "Fallback reply";
 }
 
 export function getSearchUsageLabel(searchTriggered, searchUsed) {
   if (searchUsed) {
-    return "已使用搜索";
+    return "Search results used";
   }
   if (searchTriggered) {
-    return "已触发搜索";
+    return "Search triggered";
   }
-  return "未触发搜索";
+  return "Search not triggered";
 }
 
 export function getFallbackReasonLabel(reason) {
@@ -108,14 +108,14 @@ export function getFallbackReasonLabel(reason) {
 
 export function getRoleLabel(role) {
   if (role === "user") {
-    return "用户";
+    return "User";
   }
   if (role === "assistant") {
-    return "助手";
+    return "Assistant";
   }
-  return "系统";
+  return "System";
 }
 
 export function getSessionTitle(title) {
-  return title || "未命名会话";
+  return title || "Untitled session";
 }

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
@@ -11,19 +11,19 @@ from backend.app.db.models import ChatSession, Project, SessionSummary
 from backend.app.domain.constants import (
     PROJECT_ACCESS_OPEN,
     PROJECT_ACCESS_PROJECT_ONLY,
-    RELATED_SUMMARY_SOURCE_EXTERNAL,
-    RELATED_SUMMARY_SOURCE_PROJECT,
+    RELATED_SESSION_DIGEST_SOURCE_EXTERNAL,
+    RELATED_SESSION_DIGEST_SOURCE_PROJECT,
     SESSION_SUMMARY_KIND_SESSION_DIGEST,
     ProjectAccessMode,
-    RelatedSummarySourceScope,
+    RelatedSessionDigestSourceScope,
     STATUS_ACTIVE,
     STATUS_ARCHIVED,
 )
 from backend.app.services.memory_service import MemoryMessage, MemoryService
 
 
-MAX_RELATED_SUMMARIES = 8
-DEFAULT_SESSION_TITLE = "未命名会话"
+MAX_RELATED_SESSION_DIGESTS = 8
+DEFAULT_SESSION_TITLE = "?????"
 
 
 @dataclass
@@ -32,7 +32,7 @@ class RelatedSessionDigest:
     session_title: str
     project_id: Optional[int]
     content: str
-    source_scope: RelatedSummarySourceScope
+    source_scope: RelatedSessionDigestSourceScope
 
 
 @dataclass
@@ -97,7 +97,7 @@ class ContextResolver:
                 same_project_items.append(
                     self._to_related_session_digest(
                         candidate,
-                        RELATED_SUMMARY_SOURCE_PROJECT,
+                        RELATED_SESSION_DIGEST_SOURCE_PROJECT,
                     )
                 )
                 continue
@@ -106,11 +106,11 @@ class ContextResolver:
                 external_items.append(
                     self._to_related_session_digest(
                         candidate,
-                        RELATED_SUMMARY_SOURCE_EXTERNAL,
+                        RELATED_SESSION_DIGEST_SOURCE_EXTERNAL,
                     )
                 )
 
-        return (same_project_items + external_items)[:MAX_RELATED_SUMMARIES]
+        return (same_project_items + external_items)[:MAX_RELATED_SESSION_DIGESTS]
 
     def _build_digest_candidate_query(self, current_session: ChatSession):
         return (
@@ -222,7 +222,7 @@ class ContextResolver:
     def _to_related_session_digest(
         self,
         candidate: ChatSession,
-        source_scope: RelatedSummarySourceScope,
+        source_scope: RelatedSessionDigestSourceScope,
     ) -> RelatedSessionDigest:
         return RelatedSessionDigest(
             session_id=candidate.id,

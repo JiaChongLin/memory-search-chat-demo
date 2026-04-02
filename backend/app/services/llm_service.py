@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from dataclasses import dataclass
@@ -16,6 +16,20 @@ SYSTEM_PROMPT = (
     "请基于用户输入、项目级指令、项目 stable facts、会话历史、当前会话工作记忆、相关会话摘要和搜索上下文生成简洁回答。"
     "如果搜索结果为空，就不要假装引用了实时信息；如果信息不足，可以明确说明。"
 )
+
+MAX_PROJECT_NAME_CHARS = 120
+MAX_PROJECT_INSTRUCTION_CHARS = 900
+MAX_STABLE_FACTS = 6
+MAX_STABLE_FACT_CHARS = 220
+MAX_STABLE_FACTS_SECTION_CHARS = 1200
+MAX_WORKING_MEMORY_CHARS = 1400
+MAX_RELATED_DIGESTS = 4
+MAX_RELATED_DIGEST_CHARS = 320
+MAX_RELATED_DIGESTS_SECTION_CHARS = 1400
+MAX_SEARCH_RESULTS = 4
+MAX_SEARCH_TITLE_CHARS = 120
+MAX_SEARCH_SNIPPET_CHARS = 280
+MAX_SEARCH_SECTION_CHARS = 1400
 
 
 @dataclass
@@ -131,37 +145,18 @@ class LLMService:
     ) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-        project_context = self._render_project_context(project_name, project_instruction)
-        if project_context:
-            messages.append({"role": "system", "content": project_context})
-
-        stable_facts_context = self._render_stable_facts_context(stable_facts)
-        if stable_facts_context:
-            messages.append({"role": "system", "content": stable_facts_context})
-
-        if working_memory:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": f"当前会话 working_memory：\n{working_memory}",
-                }
-            )
-
-        if related_session_digests:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": self._render_related_session_digests(related_session_digests),
-                }
-            )
-
-        if search_results:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": self._render_search_context(search_results),
-                }
-            )
+        # Order from strongest steering to weaker references so later expansion does not
+        # flatten everything into one giant system block.
+        system_sections = [
+            self._render_project_context(project_name, project_instruction),
+            self._render_stable_facts_context(stable_facts),
+            self._render_working_memory_context(working_memory),
+            self._render_related_session_digests(related_session_digests),
+            self._render_search_context(search_results),
+        ]
+        for section in system_sections:
+            if section:
+                messages.append({"role": "system", "content": section})
 
         for item in history:
             messages.append({"role": item.role, "content": item.content})
@@ -179,9 +174,14 @@ class LLMService:
 
         lines = ["当前会话所属项目信息："]
         if project_name:
-            lines.append(f"项目名称：{project_name}")
+            lines.append(
+                f"项目名称：{self._truncate_text(project_name, MAX_PROJECT_NAME_CHARS)}"
+            )
         if project_instruction:
-            lines.append(f"项目级 instruction：{project_instruction}")
+            lines.append(
+                "项目级 instruction："
+                f"{self._truncate_text(project_instruction, MAX_PROJECT_INSTRUCTION_CHARS)}"
+            )
         return "\n".join(lines)
 
     def _render_stable_facts_context(self, stable_facts: list[str]) -> Optional[str]:
@@ -189,30 +189,103 @@ class LLMService:
             return None
 
         lines = ["当前项目 active stable facts / saved memories："]
-        for index, item in enumerate(stable_facts, start=1):
-            lines.append(f"{index}. {item}")
-        return "\n".join(lines)
+        for index, item in enumerate(stable_facts[:MAX_STABLE_FACTS], start=1):
+            entry = f"{index}. {self._truncate_text(item, MAX_STABLE_FACT_CHARS)}"
+            if not self._append_section_entry(
+                lines,
+                entry,
+                max_chars=MAX_STABLE_FACTS_SECTION_CHARS,
+            ):
+                break
+        return "\n".join(lines) if len(lines) > 1 else None
+
+    def _render_working_memory_context(self, working_memory: Optional[str]) -> Optional[str]:
+        if not working_memory:
+            return None
+        return (
+            "当前会话 working_memory：\n"
+            f"{self._truncate_text(working_memory, MAX_WORKING_MEMORY_CHARS)}"
+        )
 
     def _render_related_session_digests(
         self,
         related_session_digests: list[RelatedSessionDigest],
-    ) -> str:
-        lines = ["以下是其他可读会话的 session_digest："]
-        for index, item in enumerate(related_session_digests, start=1):
-            source_label = "同项目" if item.source_scope == "project" else "外部可访问"
-            lines.append(
-                f"{index}. {source_label}会话《{item.session_title}》({item.session_id[:8]})：{item.content}"
-            )
-        return "\n".join(lines)
+    ) -> Optional[str]:
+        if not related_session_digests:
+            return None
 
-    def _render_search_context(self, search_results: list[SearchResult]) -> str:
+        lines = ["以下是其他可读会话的 session_digest："]
+        for index, item in enumerate(related_session_digests[:MAX_RELATED_DIGESTS], start=1):
+            source_label = (
+                "同项目" if item.source_scope == "project" else "外部可访问"
+            )
+            session_title = self._truncate_text(item.session_title, 80)
+            digest_content = self._truncate_text(item.content, MAX_RELATED_DIGEST_CHARS)
+            entry = (
+                f"{index}. {source_label}会话《{session_title}》({item.session_id[:8]})："
+                f"{digest_content}"
+            )
+            if not self._append_section_entry(
+                lines,
+                entry,
+                max_chars=MAX_RELATED_DIGESTS_SECTION_CHARS,
+            ):
+                break
+        return "\n".join(lines) if len(lines) > 1 else None
+
+    def _render_search_context(self, search_results: list[SearchResult]) -> Optional[str]:
+        if not search_results:
+            return None
+
         lines = ["以下是可供参考的联网搜索结果："]
-        for index, result in enumerate(search_results, start=1):
-            lines.append(f"{index}. 标题：{result.title}")
-            lines.append(f"   链接：{result.url}")
+        for index, result in enumerate(search_results[:MAX_SEARCH_RESULTS], start=1):
+            block_lines = [
+                f"{index}. 标题：{self._truncate_text(result.title, MAX_SEARCH_TITLE_CHARS)}",
+                f"   链接：{result.url}",
+            ]
             if result.snippet:
-                lines.append(f"   摘要：{result.snippet}")
-        return "\n".join(lines)
+                block_lines.append(
+                    "   摘要："
+                    f"{self._truncate_text(result.snippet, MAX_SEARCH_SNIPPET_CHARS)}"
+                )
+            entry = "\n".join(block_lines)
+            if not self._append_section_entry(
+                lines,
+                entry,
+                max_chars=MAX_SEARCH_SECTION_CHARS,
+            ):
+                break
+        return "\n".join(lines) if len(lines) > 1 else None
+
+    def _append_section_entry(
+        self,
+        lines: list[str],
+        entry: str,
+        *,
+        max_chars: int,
+    ) -> bool:
+        candidate = "\n".join([*lines, entry])
+        if len(candidate) <= max_chars:
+            lines.append(entry)
+            return True
+
+        remaining_budget = max_chars - len("\n".join(lines)) - 1
+        if remaining_budget <= 1:
+            return False
+
+        truncated_entry = self._truncate_text(entry, remaining_budget)
+        if not truncated_entry:
+            return False
+        lines.append(truncated_entry)
+        return False
+
+    def _truncate_text(self, text: str, max_chars: int) -> str:
+        normalized = text.strip()
+        if len(normalized) <= max_chars:
+            return normalized
+        if max_chars <= 1:
+            return normalized[:max_chars]
+        return normalized[: max_chars - 1].rstrip() + "?"
 
     def _build_fallback_reply(
         self,

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Literal
 
@@ -24,11 +24,11 @@ RECORD_STATUSES = (
     STATUS_ARCHIVED,
 )
 
-RELATED_SUMMARY_SOURCE_PROJECT = "project"
-RELATED_SUMMARY_SOURCE_EXTERNAL = "external"
-RELATED_SUMMARY_SOURCE_SCOPES = (
-    RELATED_SUMMARY_SOURCE_PROJECT,
-    RELATED_SUMMARY_SOURCE_EXTERNAL,
+RELATED_SESSION_DIGEST_SOURCE_PROJECT = "project"
+RELATED_SESSION_DIGEST_SOURCE_EXTERNAL = "external"
+RELATED_SESSION_DIGEST_SOURCE_SCOPES = (
+    RELATED_SESSION_DIGEST_SOURCE_PROJECT,
+    RELATED_SESSION_DIGEST_SOURCE_EXTERNAL,
 )
 
 SESSION_SUMMARY_KIND_WORKING_MEMORY = "working_memory"
@@ -41,5 +41,5 @@ SESSION_SUMMARY_KINDS = (
 ProjectAccessMode = Literal["open", "project_only"]
 RecordStatus = Literal["active", "archived"]
 SessionVisibilityMode = Literal["shared", "private"]
-RelatedSummarySourceScope = Literal["project", "external"]
+RelatedSessionDigestSourceScope = Literal["project", "external"]
 SessionSummaryKind = Literal["working_memory", "session_digest"]

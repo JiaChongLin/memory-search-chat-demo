@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from uuid import uuid4
 
@@ -71,6 +71,8 @@ class ChatService:
         except Exception:
             session_title = None
 
+        related_session_digest_count = len(resolved_context.related_session_digests)
+
         return ChatResponse(
             session_id=session_id,
             reply=llm_reply.content,
@@ -90,7 +92,8 @@ class ChatService:
                 for result in search_results
             ],
             context_scope=resolved_context.context_scope,
-            related_summary_count=len(resolved_context.related_session_digests),
+            related_session_digest_count=related_session_digest_count,
+            related_summary_count=related_session_digest_count,
         )
 
     def _create_session_id(self) -> str:

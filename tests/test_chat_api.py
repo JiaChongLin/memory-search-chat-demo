@@ -18,6 +18,7 @@ def test_chat_first_request_returns_session_and_reply(client: TestClient) -> Non
     assert data["search_used"] is False
     assert isinstance(data["sources"], list)
     assert data["context_scope"] == "open"
+    assert data["related_session_digest_count"] == 0
     assert data["related_summary_count"] == 0
     assert data["title"] == "hello demo"
     assert data["working_memory"] is None
@@ -41,6 +42,7 @@ def test_chat_reuses_existing_session(client: TestClient) -> None:
     assert second_data["session_id"] == first_data["session_id"]
     assert second_data["reply"]
     assert second_data["context_scope"] == "open"
+    assert second_data["related_session_digest_count"] == 0
     assert second_data["related_summary_count"] == 0
     assert second_data["title"] == first_data["title"]
     assert second_data["session_digest"]
@@ -83,6 +85,7 @@ def test_chat_injects_project_instruction_and_stable_facts_for_project_session(
         "/api/projects",
         json={
             "name": "Roadmap Project",
+            "description": "Human-facing roadmap note only.",
             "instruction": "Always answer like a product lead and keep bullets crisp.",
             "access_mode": "open",
         },
@@ -117,6 +120,16 @@ def test_chat_injects_project_instruction_and_stable_facts_for_project_session(
         captured["project_name"] = project_name
         captured["project_instruction"] = project_instruction
         captured["stable_facts"] = stable_facts
+        captured["messages"] = self._build_messages(
+            user_message=user_message,
+            history=history,
+            stable_facts=stable_facts or [],
+            working_memory=working_memory,
+            related_session_digests=related_session_digests or [],
+            project_name=project_name,
+            project_instruction=project_instruction,
+            search_results=search_results or [],
+        )
         return LLMReply(content="stub reply", used_live_model=False, fallback_reason="captured")
 
     monkeypatch.setattr(LLMService, "generate_reply", fake_generate_reply)
@@ -133,6 +146,8 @@ def test_chat_injects_project_instruction_and_stable_facts_for_project_session(
         "Budget ceiling remains 2 million CNY for this quarter.",
         "Default deliverables should be written in Chinese.",
     }
+    project_system_context = captured["messages"][1]["content"]
+    assert "Human-facing roadmap note only." not in project_system_context
 
 
 def test_chat_passes_related_session_title_with_digest(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

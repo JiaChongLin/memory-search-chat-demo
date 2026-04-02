@@ -1,165 +1,35 @@
-﻿# Dev Notes
+# Dev Notes
 
-## 当前结构
+## Terminology
 
-当前聊天主链路仍然是应用型后端结构：
+- `ChatMessage` is the source of truth.
+- `SessionSummary` is a derived table, not a history source.
+- `working_memory` is the current session runtime handoff memory.
+- `session_digest` is the session overview exposed to other sessions.
+- `stable_facts` are project-level long-term facts or constraints.
+- `Project.instruction` is the project-level prompt field.
+- `Project.description` is human-readable only.
 
-- `ChatService`
-  负责编排聊天请求
-- `ContextResolver`
-  负责访问规则与上下文解析
-- `MemoryService`
-  负责 recent messages / summary / append_turn
-- `SessionService`
-  负责会话管理、会话消息历史读取、会话改名、自动命名
-- `ProjectService`
-  负责项目管理、项目名称/描述更新
+## Compatibility Notes
 
-## 会话层新增能力
+- `GET /api/sessions/{session_id}/summary` keeps its old route name for compatibility.
+  It returns `{ working_memory, session_digest, summary_updated_at }`.
+- `related_summary_count` remains as a deprecated compatibility alias.
+  New code should use `related_session_digest_count`.
+- Frontend state uses `memoryMap`, not `summaryMap`.
 
-### 1. 会话完整历史回读
+## Current Rules
 
-新增：
+- current-session continuation reads `recent messages + working_memory`
+- cross-session reads use `session_digest` only
+- `project.description` never enters model context
+- active stable facts enter model context only when the current session belongs to that project
+- debug UI should name `working_memory` and `session_digest` explicitly instead of using generic `summary` wording
 
-- `GET /api/sessions/{session_id}/messages`
+## Out of Scope
 
-用途：
-
-- 前端切换会话时回读完整消息历史
-- 页面刷新后恢复当前会话消息列表
-- 当前不做分页，先满足 demo 和控制台验证需求
-
-### 2. 自动命名
-
-当前自动命名采用稳定的规则生成策略，而不是高成本 LLM 命名：
-
-- 会话已有标题时，不做处理
-- 会话标题为空时，在第一次成功聊天后尝试补标题
-- 优先读取第一条 user message
-- 先做空白压缩
-- 优先截取第一句
-- 控制标题长度，避免过长
-
-这样做的好处是：
-
-- 不依赖外部模型能力
-- 没有 API key 时仍然稳定
-- 行为可预测，方便测试
-
-### 3. 手动改名
-
-新增：
-
-- `PATCH /api/sessions/{session_id}`
-
-当前只支持更新 `title`。改名后：
-
-- `updated_at` 会更新
-- 前端会同步更新右侧会话头部
-- 左侧导航会话标题也会刷新
-
-## 前端恢复逻辑
-
-前端当前不再只依赖本地页面缓存来显示消息。
-
-页面刷新后：
-
-1. 从 `localStorage` 恢复 `currentSessionId`
-2. 重新拉取项目与会话列表
-3. 如果当前会话仍存在，则请求 `GET /api/sessions/{session_id}/messages`
-4. 将返回的完整消息历史写入 `state.messageMap`
-5. 右侧聊天区重新渲染该会话历史
-
-## 当前保留的边界
-
-- 其他会话当前仍然只以 summary 进入上下文
-- 不做消息分页
-- 不做标题版本历史
-- 不做 allowlist
-- 不做全文搜索
-
-## 删除与归档语义
-
-- `archived` 会话仍然保留，可查询，但不能继续聊天，也不进入上下文检索
-- 会话删除是硬删除，并级联删除消息和摘要
-- 项目删除是硬删除，并级联删除项目内全部会话、消息和摘要
-- 当前不提供项目归档
-
-## SQLite 说明
-
-如果本地 SQLite 文件来自更早版本，建议删除旧库后重新初始化。
-
-原因：
-
-- 权限模型已经过重写
-- 删除语义已经从软删除切换为硬删除
-- 旧库未必能完整体现当前级联删除与上下文规则
-
-## 项目编辑补充
-
-现在支持：
-
-- `PATCH /api/projects/{project_id}`
-
-当前只允许更新：
-
-- `name`
-- `description`
-
-当前不允许更新：
-
-- `access_mode`（项目访问模式创建后不可修改）
-
-前端左侧项目区已经补上轻量编辑入口，提交后会同步刷新左侧项目列表与右侧当前项目显示。
-
-## 前端当前交互补充
-
-- 左侧不再提供后端地址输入、连接状态和手动检查按钮，默认直接使用本地开发地址。
-- health check 仍会在页面初始化时静默调用，但不再占用 UI 空间。
-- 右侧 composer 现在采用单行起步、自动增高、超出最大高度后内部滚动的输入逻辑。
-- 左侧项目弹窗已支持“新建项目 / 编辑项目”双模式，但编辑态只允许修改名称和描述。
-- 删除项目、删除会话当前使用页面内自定义确认弹窗，而不是浏览器默认确认框。
-- 项目创建、项目更新、会话创建以及删除成功提示会短暂显示后淡出；错误提示仍然保留，便于排查问题。
-- 前端已经为 `newChatMenuOpen` 增加 no-op 保护，避免点击空白区域时触发无意义重渲染，从而影响文本选择体验。
-
-
-
-## 会话层设计原则（补充）
-
-- `ChatMessage` 是 source of truth；消息历史是最终依据。
-- `SessionSummary` 是 derived artifact；它只是内部记忆层缓存。
-- `is_private` 是可逆的会话级可见性开关，可从 shared 切到 private，也可再切回 shared。
-- `is_private` 只限制“别人能不能读我”，不限制“我能不能读别人”。
-- summary 当前仍然是规则压缩，而不是每轮 LLM 摘要。
-
-## 当前已实现的会话层底座
-
-- 会话元数据维护：`updated_at` / `last_message_at` / `message_count` / `summary_updated_at`
-- 完整消息历史回读
-- 自动命名与手动改名
-- 私密性可逆切换
-- 前端共享/私密会话创建与当前会话私密性切换
-
-## Session Layer TODO
-
-- summary 校验与回源重建
-- 消息分页 / 懒加载
-- 会话搜索
-- 更强的摘要策略
-- summary 版本管理
-- 跨会话完整消息级读取（暂不做）
-- embedding memory / 全文检索（暂不做）
-
-## 刷新恢复与调试快照补充
-
-- 当前前端刷新后会重新拉取会话列表，并优先通过后端接口恢复当前选中会话，而不是依赖本地持久化整份消息或摘要缓存。
-- 当前会话消息历史：`GET /api/sessions/{session_id}/messages`
-- 当前会话内部 summary：`GET /api/sessions/{session_id}/summary`
-- summary 会写回前端内存态 `summaryMap`，用于当前页显示；它不再作为长期本地缓存对象。
-- 调试面板快照仍然只在当前页面生命周期内保留；刷新后如果没有新的聊天响应，就会明确提示这是一份当前页临时信息。
-
-## 前端交互补充
-
-- 会话改名已从浏览器原生 `prompt` 切换为页面内轻量输入弹窗。
-- success / info 类型提示默认使用短暂显示后淡出的 transient notice。
-- warning / error 仍然保留常驻提示，避免排查问题时信息过快消失。
+- message pagination
+- vector retrieval
+- stable facts auto extraction
+- cross-session full-message reads
+- agent loop

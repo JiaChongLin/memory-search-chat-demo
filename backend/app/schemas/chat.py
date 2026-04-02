@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Optional
 
@@ -37,4 +37,10 @@ class ChatResponse(BaseModel):
     search_used: bool = False
     sources: list[SearchSource] = Field(default_factory=list)
     context_scope: Optional[str] = None
-    related_summary_count: int = 0
+    related_session_digest_count: int = 0
+    # Deprecated compatibility alias for older frontend builds that still read
+    # related_summary_count. Internal naming should use related_session_digest_count.
+    related_summary_count: Optional[int] = Field(
+        default=None,
+        json_schema_extra={"deprecated": True},
+    )

@@ -5,7 +5,7 @@
   getDebugFieldLabel,
   getBoolLabel,
   getFallbackReasonLabel,
-  getMemoryCachedLabel,
+  getDerivedMemoryStatusLabel,
   getModelUsageLabel,
   getPrivacyHelpText,
   getPrivacyLabel,
@@ -53,7 +53,7 @@ function buildDebugItems(message) {
   const debug = message.debug;
   const items = [
     { label: `解析结果：${getAccessModeLabel(debug.context_scope || "open")}`, variant: "scope" },
-    { label: `相关 digest ${debug.related_summary_count ?? 0} 条`, variant: "soft" },
+    { label: `Related session_digest ${debug.related_session_digest_count ?? 0}`, variant: "soft" },
     {
       label: getModelUsageLabel(debug.used_live_model),
       variant: debug.used_live_model ? "success" : "warning",
@@ -145,13 +145,13 @@ function renderDebugPanel(state, elements) {
     ["current_project_access", getCurrentProjectAccessLabel(project)],
     ["current_session_visibility", session ? getPrivacyLabel(session.is_private) : "未选择"],
     ["context_scope", getAccessModeLabel(debug?.context_scope)],
-    ["related_summary_count", String(debug?.related_summary_count ?? 0)],
+    ["related_session_digest_count", String(debug?.related_session_digest_count ?? 0)],
     ["used_live_model", getBoolLabel(debug?.used_live_model)],
     ["fallback_reason", getFallbackReasonLabel(debug?.fallback_reason)],
     ["search_triggered", getBoolLabel(debug?.search_triggered)],
     ["search_used", getBoolLabel(debug?.search_used)],
-    ["working_memory_cached", getMemoryCachedLabel(Boolean(memory?.working_memory))],
-    ["session_digest_cached", getMemoryCachedLabel(Boolean(memory?.session_digest))],
+    ["working_memory_state", getDerivedMemoryStatusLabel(Boolean(memory?.working_memory))],
+    ["session_digest_state", getDerivedMemoryStatusLabel(Boolean(memory?.session_digest))],
   ];
 
   elements.debugInfo.innerHTML = rows
@@ -205,7 +205,7 @@ function renderMemory(state, elements) {
     elements.workingMemoryBadge,
     memory?.working_memory || null,
     hasSession
-      ? "当前选中会话暂时还没有 working_memory。发送聊天后，旧消息压缩完成时会在这里显示。"
+      ? "No working_memory is available for this session yet. It is a runtime handoff object for continuing the current session, not the message history itself."
       : "当前没有选中会话。请先在左侧导航中创建或选择会话。",
   );
 
@@ -214,7 +214,7 @@ function renderMemory(state, elements) {
     elements.sessionDigestBadge,
     memory?.session_digest || null,
     hasSession
-      ? "当前选中会话暂时还没有 session_digest。发送聊天后，会话级滚动摘要会在这里显示。"
+      ? "No session_digest is available for this session yet. It is a cross-session readable digest, not the message history itself."
       : "当前没有选中会话。请先在左侧导航中创建或选择会话。",
   );
 }
@@ -246,7 +246,7 @@ function renderComposerState(state, elements) {
   }
 
   elements.composerHint.textContent = "Shift + Enter 换行，Enter 发送。";
-  elements.messageInput.placeholder = "围绕当前会话继续聊天，观察 working_memory、session_digest、sources 和调试信息变化。";
+  elements.messageInput.placeholder = "Continue chatting in the current session and observe working_memory, session_digest, sources, and debug fields.";
 }
 
 function renderNotice(state, elements) {
@@ -340,7 +340,7 @@ function getMessageKey(message) {
     String(message?.timestamp || ""),
     message?.content || "",
     String(Array.isArray(message?.sources) ? message.sources.length : 0),
-    String(message?.debug?.related_summary_count ?? ""),
+    String(message?.debug?.related_session_digest_count ?? message?.debug?.related_summary_count ?? ""),
   ].join("|");
 }
 

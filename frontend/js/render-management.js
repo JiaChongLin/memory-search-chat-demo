@@ -95,8 +95,11 @@ function renderSidebarProjectItem(state, project) {
   const visibleSessions = showAllSessions ? sessions : sessions.slice(0, 5);
   const hasMoreSessions = sessions.length > 5;
   const instructionHint = project.instruction
-    ? `<div class="sidebar-note compact">instruction：${escapeHtml(project.instruction)}</div>`
-    : "";
+    ? `<div class="sidebar-note compact">模型使用的项目级指令：${escapeHtml(project.instruction)}</div>`
+    : '<div class="sidebar-note compact">当前项目未配置项目级指令。</div>';
+  const descriptionHint = project.description
+    ? `<div class="sidebar-note compact">给人看的项目说明：${escapeHtml(project.description)}</div>`
+    : '<div class="sidebar-note compact">当前项目未填写项目说明。</div>';
 
   return `
     <article class="nav-project-group ${isSelected ? "selected" : ""}">
@@ -108,7 +111,8 @@ function renderSidebarProjectItem(state, project) {
           </span>
           <span class="nav-project-meta">
             ${badge(getAccessModeLabel(project.access_mode), "scope")}
-            ${project.instruction ? badge("有指令", "soft") : ""}
+            ${project.instruction ? badge("模型指令", "soft") : ""}
+            ${project.description ? badge("项目说明", "soft") : ""}
           </span>
         </button>
         <div class="nav-project-actions">
@@ -119,7 +123,7 @@ function renderSidebarProjectItem(state, project) {
             title="编辑项目"
             aria-label="编辑项目"
           >
-            编辑
+            ??
           </button>
           ${
             isSelected
@@ -131,7 +135,7 @@ function renderSidebarProjectItem(state, project) {
                   title="删除项目"
                   aria-label="删除项目"
                 >
-                  删除
+                  ??
                 </button>
               `
               : ""
@@ -143,6 +147,8 @@ function renderSidebarProjectItem(state, project) {
           ? `
             <div class="nav-project-children">
               ${instructionHint}
+              ${descriptionHint}
+              <div class="sidebar-note compact">说明：只有项目级指令会进入模型上下文；项目说明只给人看。</div>
               ${
                 sessions.length
                   ? `
@@ -248,7 +254,10 @@ function renderCurrentSessionPanel(state, elements) {
   const activeStableFacts = stableFacts.filter((item) => item.status === "active");
   const projectInstruction = project?.instruction
     ? escapeHtml(project.instruction)
-    : "当前项目未配置 instruction。";
+    : "当前项目未配置项目级指令。";
+  const projectDescription = project?.description
+    ? escapeHtml(project.description)
+    : "当前项目未填写项目说明。";
 
   if (!session) {
     elements.sessionDetail.innerHTML = `
@@ -275,7 +284,7 @@ function renderCurrentSessionPanel(state, elements) {
       </div>
       <p class="detail-copy">${escapeHtml(getPrivacyHelpText(session.is_private))}</p>
       <div class="detail-meta stacked">
-        <span>会话 ID：${escapeHtml(session.id)}</span>
+        <span>?? ID?${escapeHtml(session.id)}</span>
         <span>所属项目：${escapeHtml(project ? project.name : "无项目会话")}</span>
         <span>会话可见性：${escapeHtml(getPrivacyLabel(session.is_private))}</span>
         <span>消息数量：${escapeHtml(String(session.message_count ?? 0))}</span>
@@ -284,8 +293,18 @@ function renderCurrentSessionPanel(state, elements) {
       <p class="hint-text">切换私密性只影响其他会话能否读取当前会话，不影响当前会话读取别人。</p>
       ${
         project
-          ? `<p class="hint-text">项目级 instruction 会在聊天时注入 system context：${projectInstruction}</p>`
-          : '<p class="hint-text">当前会话不属于任何项目，因此不会注入项目级 instruction。</p>'
+          ? `<p class="hint-text">项目级指令（给模型）：${projectInstruction}</p>`
+          : '<p class="hint-text">当前会话不属于任何项目，因此不会注入项目级指令。</p>'
+      }
+      ${
+        project
+          ? `<p class="hint-text">项目说明（给人看）：${projectDescription}</p>`
+          : '<p class="hint-text">当前会话没有项目容器，因此也没有项目说明可展示。</p>'
+      }
+      ${
+        project
+          ? '<p class="hint-text">说明：聊天时只会注入项目名称和项目级指令；项目说明不会进入模型上下文。</p>'
+          : ''
       }
       ${
         project
@@ -294,13 +313,13 @@ function renderCurrentSessionPanel(state, elements) {
       }
       <div class="inline-row action-stack">
         <button id="toggleSessionPrivacyButton" class="ghost-button" type="button">${session.is_private ? "设为共享" : "设为私密"}</button>
-        <button id="archiveSessionButton" class="ghost-button" type="button">归档</button>
+        <button id="archiveSessionButton" class="ghost-button" type="button">??</button>
         <button id="deleteSessionButton" class="danger-button" type="button">删除会话</button>
       </div>
       <label class="field-label" for="moveProjectSelect">移动到项目</label>
       <div class="inline-row">
         <select id="moveProjectSelect" class="select-input"></select>
-        <button id="moveSessionButton" class="secondary-button" type="button">移动</button>
+        <button id="moveSessionButton" class="secondary-button" type="button">??</button>
       </div>
     </div>
   `;
@@ -358,7 +377,7 @@ function renderNewChatMenu(state, elements) {
     ? `
         <div class="floating-menu-group">
           <span class="floating-menu-label">当前项目</span>
-          <p class="sidebar-note compact">${escapeHtml(project.instruction || "当前项目未配置 instruction。")}</p>
+          <p class="sidebar-note compact">${escapeHtml(project.instruction || "当前项目未配置项目级指令。")}</p>
           <div class="floating-menu-actions">
             <button class="secondary-button" type="button" data-create-session-scope="current-project" data-create-session-private="false">共享会话</button>
             <button class="ghost-button" type="button" data-create-session-scope="current-project" data-create-session-private="true">私密会话</button>

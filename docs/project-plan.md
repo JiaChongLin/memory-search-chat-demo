@@ -1,106 +1,81 @@
-﻿# Project Plan
+# Project Plan
 
-## 总体目标
+## Goal
 
-把当前以单会话为主的聊天 demo，逐步扩展成一个具备：
+Evolve the current chat demo into a small system with project-level organization, session-level memory, controlled cross-session reads, and lightweight search integration, while keeping the implementation easy to inspect and extend.
 
-- 项目层组织能力
-- 会话层可见性与生命周期管理
-- 受控跨会话上下文检索
-- 更清晰访问边界
+## Completed Milestones
 
-的演示型系统。
+### 1. Project and session management
 
-## 阶段拆分
+Completed:
 
-### 阶段 1
+- `Project` model and project management API
+- `ChatSession.project_id`, `status`, and `is_private`
+- project access boundaries: `open | project_only`
+- session visibility switch: `is_private`
 
-项目层 + 会话层权限的数据模型与管理 API
+### 2. Context resolution under access rules
 
-状态：已完成
+Completed:
 
-交付内容：
+- current session prioritizes its own recent messages
+- current session continuation reads its own `working_memory`
+- other sessions contribute `session_digest` only
+- private sessions are not exposed to other sessions
+- archived sessions do not participate in context resolution
 
-- 新增 `Project` 模型
-- 扩展 `ChatSession.project_id`
-- 扩展 `ChatSession.status`
-- 扩展 `ChatSession.is_private`
-- 新增项目管理 API
-- 新增会话管理 API
+### 3. Project-level prompt and long-term memory layers
 
-### 阶段 2
+Completed:
 
-两层权限规则接入聊天上下文解析
+- `Project.instruction` enters model context
+- `Project.description` is reduced to a human-readable field
+- project-level `stable_facts` enter model context
+- single-summary behavior has been split into `working_memory` + `session_digest`
 
-状态：已完成
+### 4. Frontend management and restore flow
 
-当前采用的新规则：
+Completed:
 
-- 项目层只控制跨项目边界
-- 会话层只控制该会话是否可被别人读取
-- private 会话自己仍然可以读取其他允许访问的历史
-- 当前会话始终优先读自己的 recent messages 和 summary
-- 其他会话只读取 summary，不直接拼接完整消息
+- project and session management console
+- full message history readback
+- lightweight frontend restore flow
+- derived-memory debug display
 
-### 阶段 3
+## Current Model Context
 
-前端控制台与权限模型重写同步
+The model currently receives:
 
-状态：已完成
+- `SYSTEM_PROMPT`
+- `project.name` + `project.instruction`
+- active `stable_facts`
+- current session `working_memory`
+- related `session_digest`
+- search results
+- recent messages
 
-交付内容：
+The model currently does not receive:
 
-- 前端可直接测试项目 / 会话 / 聊天上下文行为
-- 项目模型改为 `access_mode: open | project_only`
-- 会话继续保留 `is_private`，语义改为“只影响别人是否能读我”
-- `context_scope` 调试字段改为新语义：`open | project_only`
+- `project.description`
+- other sessions' full raw messages
+- inactive / archived stable facts
+- archived sessions
+- private sessions from other conversations
 
-### 阶段 4（预留）
+## Current Delete and Archive Rules
 
-Tool Layer 与 Agent-Friendly 能力封装
+- archived sessions remain stored but cannot continue chatting or enter context resolution
+- session delete is a hard delete
+- project delete is a cascading hard delete
+- stable facts can be archived to disable context injection
+- project archive is not implemented
 
-计划内容：
+## Backlog
 
-- 为未来的 `tools/` 层预留结构
-- 把现有 service 封装成更适合模型调用的薄能力接口
-- 保持 tool 只做包装，不重复实现业务逻辑
-- 保持 tool 优先调用 service，而不是直接碰数据库
-- 为未来单模型工具调用场景留扩展空间
-
-本阶段刻意不做：
-
-- 通用 agent runtime
-- 多 agent 编排
-- SDK 化或平台化改造
-- 把当前应用后端重写成通用 Agent 平台
-
-## 当前阶段结论
-
-当前仓库已经完成新权限模型下的聊天上下文解析。
-
-当前会进入模型上下文的数据：
-
-- 当前会话最近消息
-- 当前会话摘要
-- 按新规则筛出的其他会话摘要
-
-当前不会进入模型上下文的数据：
-
-- 其他会话的完整原始消息
-- private 会话摘要（当前会话自己除外）
-- archived 会话
-- allowlist 相关内容（尚未实现）
-
-## 当前删除与归档规则
-
-- 会话仍支持 rchived，但 rchived 会话不能继续聊天，也不会进入上下文检索。
-- 会话删除已改成硬删除；后续开发不再围绕 deleted 状态扩展。
-- 项目删除已改成级联硬删除；删除项目时，项目内全部会话、消息和摘要会一起删除。
-- 当前不做项目归档。
-
-## 当前删除与归档规则
-
-- 会话仍支持 `archived`，但 `archived` 会话不能继续聊天，也不会进入上下文检索。
-- 会话删除已改成硬删除；后续开发不再围绕 `deleted` 状态扩展。
-- 项目删除已改成级联硬删除；删除项目时，项目内全部会话、消息和摘要会一起删除。
-- 当前不做项目归档。
+- message pagination / lazy loading
+- stable facts extraction and confirmation flow
+- stronger derived-memory validation and rebuild tools
+- embedding / vector retrieval
+- cross-session full-message reads
+- agent loop / tool runtime

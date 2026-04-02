@@ -41,7 +41,7 @@
 - `session_id` 不传时会自动创建新会话 ID
 - 当前会话自己的 recent messages 和 `working_memory` 始终优先进入上下文
 - 其他会话当前只以 `session_digest` 参与上下文，不读取完整原始消息
-- 如果当前会话属于项目，会额外注入 `project.name`、`project.instruction` 和项目 active `stable facts`
+- 如果当前会话属于项目，会额外注入 `project.name`、`project.instruction` 和项目 active `stable facts`；不会注入 `project.description`
 - `stable facts` 是长期稳定信息层，不是消息历史，也不是聊天摘要
 - `archived` 会话不能继续聊天
 - allowlist 仍未实现
@@ -49,7 +49,7 @@
 当前 system context 顺序：
 
 1. 全局 `SYSTEM_PROMPT`
-2. `project.name` + `project.instruction`
+2. `project.name` + `project.instruction`（不包含 `project.description`）
 3. 项目 active `stable facts`
 4. 当前会话 `working_memory`
 5. 相关会话 `session_digest`
@@ -64,13 +64,14 @@
   "reply": "demo reply",
   "title": "hello demo",
   "working_memory": null,
-  "session_digest": "User: hello demo | Assistant: demo reply",
+  "session_digest": "Session topic: hello demo\nCurrent status:\n- Latest assistant reply: demo reply",
   "used_live_model": false,
   "fallback_reason": "missing_api_key",
   "search_triggered": false,
   "search_used": false,
   "sources": [],
   "context_scope": "open",
+  "related_session_digest_count": 0,
   "related_summary_count": 0
 }
 ```
@@ -79,8 +80,10 @@
 
 - `context_scope`
   当前会话实际使用的访问模式，当前只有：`open` / `project_only`
+- `related_session_digest_count`
+  Count of other sessions' `session_digest` objects injected into the current request context.
 - `related_summary_count`
-  本次注入到上下文中的其他会话 `session_digest` 数量
+  Deprecated compatibility alias for older frontend builds. Its meaning is identical to `related_session_digest_count`.
 
 ### 自动命名行为
 
@@ -114,17 +117,17 @@
 字段语义：
 
 - `name`：项目主题名，弱提示
-- `instruction`：项目级行为指令，会在该项目下聊天时进入 system context
-- `description`：给人看的项目说明，不作为主提示词
+- `instruction`：项目级模型指令，会在该项目下聊天时进入 system context
+- `description`：给人看的项目说明，只用于界面 / API 展示，不进入模型上下文
 - `access_mode`：访问边界控制，不负责提示词语义
 
 ### GET /api/projects
 
-列出项目，响应中包含 `instruction`。
+列出项目，响应中同时包含 `instruction` 和 `description`。其中只有 `instruction` 用于模型。
 
 ### GET /api/projects/{project_id}
 
-查看单个项目，响应中包含 `instruction`。
+查看单个项目，响应中同时包含 `instruction` 和 `description`。其中只有 `instruction` 用于模型。
 
 ### PATCH /api/projects/{project_id}
 
@@ -309,8 +312,8 @@
 ```json
 {
   "session_id": "abc123",
-  "working_memory": "User: ... | Assistant: ...",
-  "session_digest": "Started with: ... || Current state: ...",
+  "working_memory": "Current topic: ...\nConfirmed items:\n- ...",
+  "session_digest": "Session topic: ...\nKey conclusions:\n- ...",
   "summary_updated_at": "2026-03-31T12:34:56Z"
 }
 ```
