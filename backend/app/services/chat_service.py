@@ -20,12 +20,14 @@ class ChatService:
 
     def __init__(
         self,
+        db: Session,
         memory_service: MemoryService,
         context_resolver: ContextResolver,
         session_service: SessionService,
         search_service: SearchService,
         llm_service: LLMService,
     ) -> None:
+        self._db = db
         self._memory_service = memory_service
         self._context_resolver = context_resolver
         self._session_service = session_service
@@ -99,6 +101,23 @@ class ChatService:
             related_summary_count=related_session_digest_count,
         )
 
+    def regenerate_latest_turn(self, session_id: str) -> ChatResponse:
+        latest_user_message = self._rollback_latest_turn(session_id)
+        return self.handle_chat(ChatRequest(message=latest_user_message, session_id=session_id))
+
+    def edit_latest_turn(self, session_id: str, user_message: str) -> ChatResponse:
+        self._rollback_latest_turn(session_id)
+        return self.handle_chat(ChatRequest(message=user_message, session_id=session_id))
+
+    def _rollback_latest_turn(self, session_id: str) -> str:
+        try:
+            latest_user_message = self._session_service.rollback_latest_turn(session_id)
+            self._memory_service.rebuild_memory_snapshot_from_current_messages(session_id)
+            return latest_user_message
+        except Exception:
+            self._db.rollback()
+            raise
+
     def _create_session_id(self) -> str:
         return uuid4().hex
 
@@ -118,6 +137,7 @@ def get_chat_service(db: Session = Depends(get_db)) -> ChatService:
     llm_service = LLMService(settings=settings)
 
     return ChatService(
+        db=db,
         memory_service=memory_service,
         context_resolver=context_resolver,
         session_service=session_service,

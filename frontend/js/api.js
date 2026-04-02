@@ -1,4 +1,4 @@
-function buildUrl(baseUrl, path, query) {
+﻿function buildUrl(baseUrl, path, query) {
   const url = new URL(path, `${baseUrl.replace(/\/+$/, "")}/`);
 
   if (query) {
@@ -151,6 +151,19 @@ export function moveSession(baseUrl, sessionId, projectId) {
   return requestJson(baseUrl, `/api/sessions/${sessionId}/move`, {
     method: "POST",
     body: JSON.stringify({ project_id: projectId }),
+  });
+}
+
+export function latestTurnRegenerate(baseUrl, sessionId) {
+  return requestJson(baseUrl, `/api/sessions/${sessionId}/latest-turn/regenerate`, {
+    method: "POST",
+  });
+}
+
+export function latestTurnEdit(baseUrl, sessionId, payload) {
+  return requestJson(baseUrl, `/api/sessions/${sessionId}/latest-turn/edit`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

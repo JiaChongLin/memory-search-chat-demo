@@ -92,6 +92,17 @@ class SessionService:
         )
         return list(self._db.scalars(stmt))
 
+    def rollback_latest_turn(self, session_id: str) -> str:
+        session = self._get_session_for_latest_turn_or_409(session_id)
+        user_message, assistant_message = self._get_latest_turn_pair_or_409(session_id)
+
+        latest_user_content = user_message.content
+        self._db.delete(assistant_message)
+        self._db.delete(user_message)
+        self._db.flush()
+        self._refresh_message_metadata(session)
+        return latest_user_content
+
     def update_session(
         self,
         session_id: str,
@@ -219,3 +230,48 @@ class SessionService:
                 detail="Session not found.",
             )
         return chat_session
+
+    def _get_session_for_latest_turn_or_409(self, session_id: str) -> ChatSession:
+        chat_session = self._db.get(ChatSession, session_id)
+        if chat_session is None or chat_session.status != STATUS_ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Latest-turn actions require an existing active session.",
+            )
+        return chat_session
+
+    def _get_latest_turn_pair_or_409(
+        self,
+        session_id: str,
+    ) -> tuple[ChatMessage, ChatMessage]:
+        stmt = (
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+            .limit(2)
+        )
+        latest_messages = list(self._db.scalars(stmt))
+        if len(latest_messages) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No latest turn is available for regenerate or edit.",
+            )
+
+        assistant_message, user_message = latest_messages
+        if user_message.role != "user" or assistant_message.role != "assistant":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Latest turn must end with a user -> assistant pair.",
+            )
+
+        return user_message, assistant_message
+
+    def _refresh_message_metadata(self, chat_session: ChatSession) -> None:
+        stmt = (
+            select(ChatMessage.created_at)
+            .where(ChatMessage.session_id == chat_session.id)
+            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        )
+        created_ats = list(self._db.execute(stmt).scalars())
+        chat_session.message_count = len(created_ats)
+        chat_session.last_message_at = created_ats[0] if created_ats else None

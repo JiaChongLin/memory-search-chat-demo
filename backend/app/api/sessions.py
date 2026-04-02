@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
-from backend.app.schemas.chat import ErrorResponse
+from backend.app.schemas.chat import ChatResponse, ErrorResponse
 from backend.app.schemas.sessions import (
+    LatestTurnEditRequest,
     MessageResponse,
     SessionCreateRequest,
     SessionDeleteResponse,
@@ -16,6 +17,7 @@ from backend.app.schemas.sessions import (
     SessionSummaryResponse,
     SessionUpdateRequest,
 )
+from backend.app.services.chat_service import ChatService, get_chat_service
 from backend.app.services.session_service import SessionService
 
 
@@ -101,6 +103,33 @@ def get_session_messages(
 ) -> list[MessageResponse]:
     messages = SessionService(db).get_session_messages(session_id)
     return [MessageResponse.model_validate(message) for message in messages]
+
+
+@router.post(
+    "/{session_id}/latest-turn/regenerate",
+    response_model=ChatResponse,
+    summary="Regenerate the latest user -> assistant turn",
+    responses={409: {"model": ErrorResponse}},
+)
+def regenerate_latest_turn(
+    session_id: str,
+    chat_service: ChatService = Depends(get_chat_service),
+) -> ChatResponse:
+    return chat_service.regenerate_latest_turn(session_id)
+
+
+@router.post(
+    "/{session_id}/latest-turn/edit",
+    response_model=ChatResponse,
+    summary="Edit the latest user message and regenerate the turn",
+    responses={409: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+def edit_latest_turn(
+    session_id: str,
+    payload: LatestTurnEditRequest,
+    chat_service: ChatService = Depends(get_chat_service),
+) -> ChatResponse:
+    return chat_service.edit_latest_turn(session_id, payload.message)
 
 
 @router.patch(

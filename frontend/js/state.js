@@ -64,6 +64,10 @@ const state = {
     editingProjectId: null,
     editingStableFactId: null,
     newChatMenuOpen: false,
+    latestTurnEdit: {
+      active: false,
+      sessionId: null,
+    },
   },
 };
 
@@ -83,6 +87,22 @@ function buildPersistedSidebarState() {
       .map(([key]) => Number.parseInt(key, 10))
       .filter((value) => !Number.isNaN(value)),
   };
+}
+
+
+function resetLatestTurnEditState(draft) {
+  draft.ui.latestTurnEdit.active = false;
+  draft.ui.latestTurnEdit.sessionId = null;
+}
+
+function shouldClearLatestTurnEditForSession(draft, sessionId) {
+  if (!draft.ui.latestTurnEdit.active) {
+    return false;
+  }
+  if (!sessionId) {
+    return true;
+  }
+  return draft.ui.latestTurnEdit.sessionId !== sessionId;
 }
 
 function persist() {
@@ -162,6 +182,9 @@ export function setCurrentProjectId(projectId) {
 export function setCurrentSessionId(sessionId) {
   commit((draft) => {
     draft.currentSessionId = sessionId;
+    if (shouldClearLatestTurnEditForSession(draft, sessionId)) {
+      resetLatestTurnEditState(draft);
+    }
   });
 }
 
@@ -169,6 +192,7 @@ export function clearCurrentSessionSelection() {
   commit((draft) => {
     draft.currentSessionId = null;
     draft.selectedSessionDetail = null;
+    resetLatestTurnEditState(draft);
   });
 }
 
@@ -209,6 +233,9 @@ export function setSelectedSessionDetail(session) {
   commit(
     (draft) => {
       draft.selectedSessionDetail = session;
+      if (!session || session.status === "archived") {
+        resetLatestTurnEditState(draft);
+      }
     },
     false,
   );
@@ -332,6 +359,9 @@ export function removeSessionData(sessionId) {
     delete draft.messageMap[sessionId];
     delete draft.memoryMap[sessionId];
     delete draft.chatDebugMap[sessionId];
+    if (draft.ui.latestTurnEdit.sessionId === sessionId) {
+      resetLatestTurnEditState(draft);
+    }
   });
 }
 
@@ -431,6 +461,30 @@ export function setNewChatMenuOpen(isOpen) {
   commit(
     (draft) => {
       draft.ui.newChatMenuOpen = nextValue;
+    },
+    false,
+  );
+}
+
+
+export function setLatestTurnEditMode(sessionId) {
+  if (!sessionId) {
+    return;
+  }
+
+  commit(
+    (draft) => {
+      draft.ui.latestTurnEdit.active = true;
+      draft.ui.latestTurnEdit.sessionId = sessionId;
+    },
+    false,
+  );
+}
+
+export function clearLatestTurnEditMode() {
+  commit(
+    (draft) => {
+      resetLatestTurnEditState(draft);
     },
     false,
   );

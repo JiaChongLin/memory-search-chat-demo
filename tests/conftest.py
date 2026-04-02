@@ -74,6 +74,7 @@ def test_env(monkeypatch):
                 summary_max_chars=settings.memory_summary_max_chars,
             )
             yield ChatService(
+                db=db,
                 memory_service=memory_service,
                 context_resolver=ContextResolver(db=db, memory_service=memory_service),
                 session_service=SessionService(db=db),

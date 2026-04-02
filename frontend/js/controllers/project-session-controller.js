@@ -18,6 +18,7 @@ import {
 } from "../api.js";
 import {
   clearCurrentSessionSelection,
+  clearLatestTurnEditMode,
   clearNotice,
   clearStableFactsForProject,
   getMessagesForSession,
@@ -47,11 +48,13 @@ import {
   formatErrorMessage,
   mapApiMessage,
   parseOptionalProjectId,
+  resetComposer as resetComposerHelper,
   resetProjectForm,
 } from "../helpers/ui-helpers.js";
 
 export function createProjectSessionController({
   elements,
+  resetComposer,
   showTransientNotice,
   openConfirmModal,
   closeConfirmModal,
@@ -62,6 +65,8 @@ export function createProjectSessionController({
   let getBaseUrl = () => "http://127.0.0.1:8000";
   let refreshProjects = async () => {};
   let refreshSessions = async () => {};
+  const resetComposerView =
+    typeof resetComposer === "function" ? resetComposer : () => resetComposerHelper(elements);
 
   function configureRuntime(runtime) {
     getBaseUrl = runtime.getBaseUrl;
@@ -82,8 +87,27 @@ export function createProjectSessionController({
     setSelectedProjectDetail(project);
   }
 
+  function exitLatestTurnEditModeIfNeeded(options = {}) {
+    const state = getState();
+    const latestTurnEdit = state.ui.latestTurnEdit;
+    const force = Boolean(options.force);
+    const nextSessionId = options.nextSessionId ?? null;
+    const shouldClear =
+      force ||
+      (latestTurnEdit?.active && latestTurnEdit.sessionId !== nextSessionId);
+
+    if (!shouldClear) {
+      return;
+    }
+
+    clearLatestTurnEditMode();
+    resetComposerView();
+    clearNotice("chat");
+  }
+
   function clearSessionSelection() {
     clearCurrentSessionSelection();
+    resetComposerView();
   }
 
   function resetStableFactEditor() {
@@ -478,6 +502,7 @@ export function createProjectSessionController({
         setNewChatMenuOpen(false);
       }
       if (deletingCurrentSession) {
+        exitLatestTurnEditModeIfNeeded({ force: true });
         removeSessionData(selectedSession.id);
         clearSessionSelection();
       }
@@ -491,6 +516,7 @@ export function createProjectSessionController({
 
   async function createBlankSession(projectId = null, isPrivate = false) {
     try {
+      exitLatestTurnEditModeIfNeeded({ force: true });
       setBusy("sessions", true);
       const session = await createSession(getBaseUrl(), {
         title: null,
@@ -527,6 +553,7 @@ export function createProjectSessionController({
 
   async function handleSessionSelect(sessionId) {
     const state = getState();
+    exitLatestTurnEditModeIfNeeded({ nextSessionId: sessionId });
     const session = state.sessions.find((item) => item.id === sessionId) || null;
     setCurrentSessionId(sessionId);
     setSelectedSessionDetail(session);
@@ -610,6 +637,7 @@ export function createProjectSessionController({
 
   async function handleArchiveSession(sessionId) {
     try {
+      exitLatestTurnEditModeIfNeeded({ force: true });
       const session = await archiveSession(getBaseUrl(), sessionId);
       setSelectedSessionDetail(session);
       showTransientNotice("sessions", `会话 ${String(sessionId).slice(0, 10)} 已归档。`, "success");
@@ -639,6 +667,7 @@ export function createProjectSessionController({
       const response = await deleteSession(getBaseUrl(), sessionId);
       removeSessionData(sessionId);
       if (deletingCurrentSession) {
+        exitLatestTurnEditModeIfNeeded({ force: true });
         clearSessionSelection();
       }
       showTransientNotice("sessions", response.message || "Session deleted.", "warning");

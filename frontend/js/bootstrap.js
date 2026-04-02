@@ -22,6 +22,7 @@ export function createBootstrap() {
 
   const managementController = createProjectSessionController({
     elements,
+    resetComposer: () => resetComposer(elements),
     showTransientNotice: noticeModal.showTransientNotice,
     openConfirmModal: noticeModal.openConfirmModal,
     closeConfirmModal: noticeModal.closeConfirmModal,

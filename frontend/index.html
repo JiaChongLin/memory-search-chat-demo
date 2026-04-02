@@ -160,8 +160,11 @@
             placeholder="先在左侧选择一个会话，再开始聊天。"
           ></textarea>
           <div class="inline-row composer-actions">
-            <span id="composerHint" class="hint-text">请先从左侧导航中选择一个会话。</span>
-            <button id="sendButton" class="primary-button" type="submit">发送</button>
+            <span id="composerHint" class="hint-text"></span>
+            <div class="inline-row composer-action-buttons">
+              <button id="cancelLatestTurnEditButton" class="ghost-button hidden" type="button"></button>
+              <button id="sendButton" class="primary-button" type="submit"></button>
+            </div>
           </div>
         </form>
       </main>
@@ -267,8 +270,11 @@
     <template id="messageTemplate">
       <article class="message-card">
         <div class="message-head">
-          <span class="message-role"></span>
-          <span class="message-time"></span>
+          <div class="message-head-main">
+            <span class="message-role"></span>
+            <span class="message-time"></span>
+          </div>
+          <div class="message-actions"></div>
         </div>
         <div class="message-content"></div>
         <div class="message-meta"></div>
