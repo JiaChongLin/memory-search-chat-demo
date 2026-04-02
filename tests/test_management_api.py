@@ -1,4 +1,5 @@
 ﻿import pytest
+from typing import Optional
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -591,6 +592,75 @@ def test_edit_latest_turn_replaces_last_user_and_assistant_and_rebuilds_summary(
     assert session["message_count"] == 2
 
 
+@pytest.mark.parametrize(
+    ("path_suffix", "payload"),
+    [
+        ("edit", {"message": "edited latest question"}),
+        ("regenerate", None),
+    ],
+)
+def test_latest_turn_action_failure_rolls_back_to_original_history(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    path_suffix: str,
+    payload: Optional[dict[str, str]],
+) -> None:
+    call_count = {"value": 0}
+
+    def fake_generate_reply(
+        self,
+        user_message,
+        history,
+        stable_facts=None,
+        working_memory=None,
+        related_session_digests=None,
+        project_name=None,
+        project_instruction=None,
+        search_results=None,
+    ):
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return LLMReply(
+                content="original reply",
+                used_live_model=False,
+                fallback_reason="captured",
+            )
+        raise RuntimeError("simulated latest-turn rerun failure")
+
+    monkeypatch.setattr(LLMService, "generate_reply", fake_generate_reply)
+
+    session_id = client.post("/api/sessions", json={"title": "Rollback safety"}).json()["id"]
+    first_response = client.post(
+        "/api/chat",
+        json={"session_id": session_id, "message": "original latest question"},
+    )
+    assert first_response.status_code == 200
+
+    summary_before = client.get(f"/api/sessions/{session_id}/summary").json()
+
+    with pytest.raises(RuntimeError, match="simulated latest-turn rerun failure"):
+        if payload is None:
+            client.post(f"/api/sessions/{session_id}/latest-turn/{path_suffix}")
+        else:
+            client.post(
+                f"/api/sessions/{session_id}/latest-turn/{path_suffix}",
+                json=payload,
+            )
+
+    messages = client.get(f"/api/sessions/{session_id}/messages").json()
+    assert len(messages) == 2
+    assert [item["role"] for item in messages] == ["user", "assistant"]
+    assert messages[0]["content"] == "original latest question"
+    assert messages[1]["content"] == "original reply"
+
+    summary_after = client.get(f"/api/sessions/{session_id}/summary").json()
+    assert summary_after["working_memory"] == summary_before["working_memory"]
+    assert summary_after["session_digest"] == summary_before["session_digest"]
+    assert summary_after["summary_updated_at"] == summary_before["summary_updated_at"]
+
+    session = client.get(f"/api/sessions/{session_id}").json()
+    assert session["message_count"] == 2
+
 def test_regenerate_latest_turn_returns_409_when_no_latest_turn(client: TestClient) -> None:
     session_id = client.post("/api/sessions", json={"title": "Empty latest turn"}).json()["id"]
 
@@ -634,4 +704,14 @@ def test_latest_turn_actions_require_existing_active_session(
     response = client.post(f"/api/sessions/{session_id}/latest-turn/regenerate")
 
     assert response.status_code == 409
+
+
+
+
+
+
+
+
+
+
 

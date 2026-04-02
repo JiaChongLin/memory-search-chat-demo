@@ -243,38 +243,37 @@ function renderComposerState(state, elements) {
   const session = state.selectedSessionDetail;
   const missingSelection = !session;
   const locked = session?.status === "archived";
-  const disabled = state.busy.chat || missingSelection || locked;
+  const inlineEditing = isEditingLatestTurn(state);
+  const disabled = state.busy.chat || missingSelection || locked || inlineEditing;
 
   elements.sendButton.disabled = disabled;
   elements.sendButton.textContent = "发送";
   elements.messageInput.disabled = disabled;
 
-  if (elements.cancelLatestTurnEditButton) {
-    elements.cancelLatestTurnEditButton.textContent = "取消编辑";
-    elements.cancelLatestTurnEditButton.className = "ghost-button hidden";
-    elements.cancelLatestTurnEditButton.disabled = true;
-  }
-
   if (state.busy.chat) {
-    elements.composerHint.textContent = "正在发送消息，请稍候...";
+    elements.composerHint.textContent = "正在处理请求，请稍候。";
     return;
   }
 
   if (missingSelection) {
-    elements.composerHint.textContent = "请先从左侧导航中选择一个会话。";
-    elements.messageInput.placeholder = "先在左侧选中会话，再开始聊天。";
+    elements.composerHint.textContent = "请先从左侧选择一个会话。";
+    elements.messageInput.placeholder = "先在左侧选择一个会话，再开始聊天。";
     return;
   }
 
   if (locked) {
     elements.composerHint.textContent = "当前会话已归档，输入区保持禁用。";
-    elements.messageInput.placeholder = "请切换到其他会话，或创建一个新聊天继续测试。";
+    elements.messageInput.placeholder = "请切换到其他会话，或创建一个新会话继续聊天。";
     return;
   }
 
-  elements.composerHint.textContent = isEditingLatestTurn(state)
-    ? "你正在消息卡片内编辑最新一轮。主输入框仍用于发送新消息。"
-    : "Shift + Enter 换行，Enter 发送。";
+  if (inlineEditing) {
+    elements.composerHint.textContent = "正在编辑最新用户消息，请在消息卡片内保存或取消。";
+    elements.messageInput.placeholder = "请先完成消息卡片内的编辑，或取消后再发送新消息。";
+    return;
+  }
+
+  elements.composerHint.textContent = "Shift + Enter 换行，Enter 发送。";
   elements.messageInput.placeholder =
     "继续当前会话，观察 working_memory、session_digest、sources 和 debug 字段变化。";
 }
@@ -456,10 +455,12 @@ function buildMessageActions(index, message, latestTurnState, inlineEditState) {
         label: "重答",
         action: "regenerate-latest-turn",
         messageIndex: index,
-        disabled: latestTurnState.isArchived,
+        disabled: latestTurnState.isArchived || inlineEditState.active,
         title: latestTurnState.isArchived
           ? "当前会话已归档，不能重答最新一轮。"
-          : "重新生成最新助手回复",
+          : inlineEditState.active
+            ? "请先保存或取消当前编辑，再重答最新一轮。"
+            : "重新生成最新助手回复",
       }),
     );
   }
@@ -537,7 +538,6 @@ function getLatestTurnRenderState(state, messages) {
   const isCurrentSessionEdit =
     Boolean(editState.active) && editState.sessionId === state.currentSessionId;
   const editingMessageIndex = isCurrentSessionEdit ? Number(editState.messageIndex) : -1;
-  const editDraft = isCurrentSessionEdit ? editState.draft || "" : "";
   const editOriginalContent = isCurrentSessionEdit ? editState.originalContent || "" : "";
 
   return {
@@ -545,7 +545,7 @@ function getLatestTurnRenderState(state, messages) {
     isArchived: state.selectedSessionDetail?.status === "archived",
     editingMessageIndex,
     editStateKey: isCurrentSessionEdit
-      ? `${editingMessageIndex}|${editOriginalContent}|${editDraft}`
+      ? `${editingMessageIndex}|${editOriginalContent}|${state.busy.chat ? "busy" : "idle"}`
       : "idle",
     sessionStatusKey: state.selectedSessionDetail?.status || "none",
   };

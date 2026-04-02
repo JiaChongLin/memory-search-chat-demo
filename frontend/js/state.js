@@ -491,12 +491,18 @@ export function setLatestTurnEditMode(sessionId, messageIndex, originalContent =
 }
 
 export function updateLatestTurnEditDraft(draftValue) {
+  if (!state.ui.latestTurnEdit.active) {
+    return;
+  }
+
+  const nextDraftValue = draftValue ?? "";
+  if (state.ui.latestTurnEdit.draft === nextDraftValue) {
+    return;
+  }
+
   commit(
     (draft) => {
-      if (!draft.ui.latestTurnEdit.active) {
-        return;
-      }
-      draft.ui.latestTurnEdit.draft = draftValue ?? "";
+      draft.ui.latestTurnEdit.draft = nextDraftValue;
     },
     false,
   );

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from uuid import uuid4
 
@@ -103,17 +103,30 @@ class ChatService:
 
     def regenerate_latest_turn(self, session_id: str) -> ChatResponse:
         latest_user_message = self._rollback_latest_turn(session_id)
-        return self.handle_chat(ChatRequest(message=latest_user_message, session_id=session_id))
+        return self._rerun_latest_turn(
+            session_id=session_id,
+            user_message=latest_user_message,
+        )
 
     def edit_latest_turn(self, session_id: str, user_message: str) -> ChatResponse:
         self._rollback_latest_turn(session_id)
-        return self.handle_chat(ChatRequest(message=user_message, session_id=session_id))
+        return self._rerun_latest_turn(
+            session_id=session_id,
+            user_message=user_message,
+        )
 
     def _rollback_latest_turn(self, session_id: str) -> str:
         try:
             latest_user_message = self._session_service.rollback_latest_turn(session_id)
             self._memory_service.rebuild_memory_snapshot_from_current_messages(session_id)
             return latest_user_message
+        except Exception:
+            self._db.rollback()
+            raise
+
+    def _rerun_latest_turn(self, session_id: str, user_message: str) -> ChatResponse:
+        try:
+            return self.handle_chat(ChatRequest(message=user_message, session_id=session_id))
         except Exception:
             self._db.rollback()
             raise
@@ -144,3 +157,4 @@ def get_chat_service(db: Session = Depends(get_db)) -> ChatService:
         search_service=search_service,
         llm_service=llm_service,
     )
+

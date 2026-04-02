@@ -101,6 +101,7 @@ class SessionService:
         self._db.delete(user_message)
         self._db.flush()
         self._refresh_message_metadata(session)
+        self._db.flush()
         return latest_user_content
 
     def update_session(
@@ -275,3 +276,4 @@ class SessionService:
         created_ats = list(self._db.execute(stmt).scalars())
         chat_session.message_count = len(created_ats)
         chat_session.last_message_at = created_ats[0] if created_ats else None
+

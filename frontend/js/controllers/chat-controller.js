@@ -16,7 +16,6 @@ import {
   buildAssistantDebug,
   getLatestTurnIndexes,
   resetComposer as resetComposerHelper,
-  resizeComposer,
 } from "../helpers/ui-helpers.js";
 
 const TEXT = {
@@ -149,17 +148,7 @@ export function createChatController({
     };
   }
 
-  function focusInlineEditor(messageIndex, options = {}) {
-    const selectionStart = Number.isInteger(options.selectionStart)
-      ? options.selectionStart
-      : null;
-    const selectionEnd = Number.isInteger(options.selectionEnd)
-      ? options.selectionEnd
-      : selectionStart;
-    const scrollTop = Number.isFinite(options.scrollTop) ? options.scrollTop : null;
-    const cursorAtEnd =
-      selectionStart === null && selectionEnd === null && options.cursorAtEnd !== false;
-
+  function focusInlineEditor(messageIndex) {
     window.requestAnimationFrame(() => {
       const input = document.querySelector(
         `[data-latest-turn-edit-input="${String(messageIndex)}"]`,
@@ -169,18 +158,9 @@ export function createChatController({
       }
 
       input.focus({ preventScroll: true });
-      if (selectionStart !== null && selectionEnd !== null) {
-        const nextSelectionStart = Math.min(selectionStart, input.value.length);
-        const nextSelectionEnd = Math.min(selectionEnd, input.value.length);
-        input.setSelectionRange(nextSelectionStart, nextSelectionEnd);
-      } else if (cursorAtEnd) {
-        input.setSelectionRange(input.value.length, input.value.length);
-      }
+      input.setSelectionRange(input.value.length, input.value.length);
       input.style.height = "auto";
       input.style.height = `${input.scrollHeight}px`;
-      if (scrollTop !== null) {
-        input.scrollTop = scrollTop;
-      }
     });
   }
 
@@ -190,54 +170,24 @@ export function createChatController({
     elements.messageInput.focus();
   }
 
-  function exitLatestTurnEditMode({ clearComposer = false } = {}) {
+  function exitLatestTurnEditMode() {
     clearLatestTurnEditMode();
-    if (clearComposer) {
-      resetComposerView();
-    }
   }
 
-  function restoreInlineEditForLatestUser(sessionId) {
-    const latestTurn = getLatestTurnForCurrentSession();
-    if (
-      latestTurn.sessionId !== sessionId ||
-      latestTurn.latestUserIndex < 0 ||
-      !latestTurn.messages[latestTurn.latestUserIndex]
-    ) {
-      exitLatestTurnEditMode();
-      return;
-    }
-
-    const latestUserMessage = latestTurn.messages[latestTurn.latestUserIndex];
-    setLatestTurnEditMode(
-      sessionId,
-      latestTurn.latestUserIndex,
-      latestUserMessage.content || "",
-    );
-    focusInlineEditor(latestTurn.latestUserIndex);
-  }
-
-  async function applyChatResponse(response, successMessage, options = {}) {
-    const preserveInlineEdit = Boolean(options.preserveInlineEdit);
+  async function applyChatResponse(response, successMessage) {
     setCurrentSessionId(response.session_id);
     setMemoryForSession(response.session_id, {
       working_memory: response.working_memory || null,
       session_digest: response.session_digest || null,
     });
     setChatDebug(response.session_id, buildAssistantDebug(response));
-    if (!preserveInlineEdit) {
-      exitLatestTurnEditMode();
-    }
+    exitLatestTurnEditMode();
 
     await refreshSessions({
       silent: true,
       forceMessages: true,
       forceSummary: true,
     });
-
-    if (preserveInlineEdit) {
-      restoreInlineEditForLatestUser(response.session_id);
-    }
 
     showTransientNotice(
       "chat",
@@ -289,6 +239,7 @@ export function createChatController({
 
   async function handleLatestTurnEditSubmit(message, stateBeforeSend, options = {}) {
     const messageIndex = Number(options.messageIndex ?? -1);
+    let shouldRestoreInlineFocus = false;
     setNotice("chat", null);
     setBusy("chat", true);
 
@@ -296,13 +247,9 @@ export function createChatController({
       const response = await latestTurnEditRequest(getBaseUrl(), stateBeforeSend.currentSessionId, {
         message,
       });
-      await applyChatResponse(response, TEXT.latestTurnEdited, {
-        preserveInlineEdit: true,
-      });
+      await applyChatResponse(response, TEXT.latestTurnEdited);
     } catch (error) {
-      if (messageIndex >= 0) {
-        focusInlineEditor(messageIndex);
-      }
+      shouldRestoreInlineFocus = messageIndex >= 0;
       setNotice(
         "chat",
         error?.status === 409
@@ -312,6 +259,9 @@ export function createChatController({
       );
     } finally {
       setBusy("chat", false);
+      if (shouldRestoreInlineFocus) {
+        focusInlineEditor(messageIndex);
+      }
     }
   }
 
@@ -343,6 +293,11 @@ export function createChatController({
   }
 
   function handleQuickChipClick(event) {
+    if (getState().ui.latestTurnEdit?.active) {
+      setNotice("chat", TEXT.latestTurnEditPending, "warning");
+      return;
+    }
+
     const chip = event.target.closest(".quick-chip");
     if (!chip) {
       return;
@@ -361,7 +316,7 @@ export function createChatController({
   }
 
   function handleCancelLatestTurnEdit() {
-    exitLatestTurnEditMode({ clearComposer: true });
+    exitLatestTurnEditMode();
     setNotice("chat", null);
   }
 
@@ -428,6 +383,10 @@ export function createChatController({
       setNotice("chat", TEXT.noLatestTurnToRegenerate, "warning");
       return;
     }
+    if (isEditingLatestTurnForState(state)) {
+      setNotice("chat", TEXT.latestTurnEditPending, "warning");
+      return;
+    }
     if (state.selectedSessionDetail?.status === "archived") {
       setNotice("chat", TEXT.archivedCannotRegenerate, "warning");
       return;
@@ -437,7 +396,6 @@ export function createChatController({
     setBusy("chat", true);
     try {
       const response = await latestTurnRegenerateRequest(getBaseUrl(), sessionId);
-      exitLatestTurnEditMode({ clearComposer: true });
       await applyChatResponse(response, TEXT.regenerateSuccess);
     } catch (error) {
       setNotice(
@@ -491,23 +449,28 @@ export function createChatController({
       return;
     }
 
-    const messageIndex = Number.parseInt(input.dataset.latestTurnEditInput || "-1", 10);
-    const selectionStart = input.selectionStart ?? input.value.length;
-    const selectionEnd = input.selectionEnd ?? selectionStart;
-    const scrollTop = input.scrollTop;
-
     input.style.height = "auto";
     input.style.height = `${input.scrollHeight}px`;
     updateLatestTurnEditDraft(input.value);
 
-    if (messageIndex >= 0) {
-      focusInlineEditor(messageIndex, {
-        cursorAtEnd: false,
-        selectionStart,
-        selectionEnd,
-        scrollTop,
-      });
+    const inlineEditState = getInlineEditState();
+    const submitButton = input
+      .closest(".message-inline-editor")
+      ?.querySelector('[data-message-action="submit-edit-latest-turn"]');
+    if (!(submitButton instanceof HTMLButtonElement)) {
+      return;
     }
+
+    const canSubmit =
+      inlineEditState.active &&
+      !inlineEditState.state.busy.chat &&
+      inlineEditState.state.selectedSessionDetail?.status !== "archived" &&
+      Boolean(input.value.trim()) &&
+      input.value !== inlineEditState.originalContent;
+
+    submitButton.disabled = !canSubmit;
+    submitButton.title = canSubmit ? "发送编辑后的最新用户消息" : "请先修改内容后再发送";
+    submitButton.setAttribute("aria-label", submitButton.title);
   }
 
   return {

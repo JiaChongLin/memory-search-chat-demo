@@ -11,12 +11,6 @@ export function wireEvents({
   elements.composerForm.addEventListener("submit", chatController.handleChatSubmit);
   elements.messageInput.addEventListener("keydown", chatController.handleComposerKeydown);
   elements.messageInput.addEventListener("input", () => resizeComposer(elements));
-  if (elements.cancelLatestTurnEditButton) {
-    elements.cancelLatestTurnEditButton.addEventListener(
-      "click",
-      chatController.handleCancelLatestTurnEdit,
-    );
-  }
   elements.quickChips.forEach((chip) =>
     chip.addEventListener("click", chatController.handleQuickChipClick),
   );
