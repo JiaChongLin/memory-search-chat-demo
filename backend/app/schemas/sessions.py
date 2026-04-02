@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
@@ -6,6 +6,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.app.domain.constants import RecordStatus
+from backend.app.schemas.chat import SearchSource
 
 
 class SessionCreateRequest(BaseModel):
@@ -53,6 +54,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     created_at: datetime
+    sources: list[SearchSource] = Field(default_factory=list)
 
 
 class SessionDeleteResponse(BaseModel):

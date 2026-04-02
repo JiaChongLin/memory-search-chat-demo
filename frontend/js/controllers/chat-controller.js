@@ -1,12 +1,12 @@
-﻿import { getAccessModeLabel } from "../labels.js";
+import { getAccessModeLabel } from "../labels.js";
 import {
   appendMessage,
+  removeMessage,
   setBusy,
   setChatDebug,
   setCurrentSessionId,
   setMemoryForSession,
   setNotice,
-  setSelectedSessionDetail,
 } from "../state.js";
 import { buildAssistantDebug } from "../helpers/ui-helpers.js";
 
@@ -30,21 +30,23 @@ export function createChatController({
 
     const stateBeforeSend = getState();
     if (!stateBeforeSend.currentSessionId) {
-      setNotice("chat", "请先从左侧选择一个会话。", "warning");
+      setNotice("chat", "\u8bf7\u5148\u4ece\u5de6\u4fa7\u9009\u62e9\u4e00\u4e2a\u4f1a\u8bdd\u3002", "warning");
       return;
     }
 
     if (!canChatWithCurrentSelection()) {
-      setNotice("chat", "当前会话已归档，请切换到其他会话。", "warning");
+      setNotice("chat", "\u5f53\u524d\u4f1a\u8bdd\u5df2\u5f52\u6863\uff0c\u8bf7\u5207\u6362\u5230\u5176\u4ed6\u4f1a\u8bdd\u3002", "warning");
       return;
     }
 
-    appendMessage(stateBeforeSend.currentSessionId, {
+    const optimisticMessage = {
       role: "user",
       content: message,
       timestamp: Date.now(),
       sources: [],
-    });
+    };
+
+    appendMessage(stateBeforeSend.currentSessionId, optimisticMessage);
     resetComposer();
     setNotice("chat", null);
     setBusy("chat", true);
@@ -55,18 +57,7 @@ export function createChatController({
         session_id: stateBeforeSend.currentSessionId,
       });
 
-      const nextSessionDetail = {
-        id: response.session_id,
-        title: response.title ?? stateBeforeSend.selectedSessionDetail?.title ?? null,
-        project_id: stateBeforeSend.selectedSessionDetail?.project_id ?? null,
-        status: "active",
-        is_private: stateBeforeSend.selectedSessionDetail?.is_private || false,
-        created_at: stateBeforeSend.selectedSessionDetail?.created_at,
-        updated_at: new Date().toISOString(),
-      };
-
       setCurrentSessionId(response.session_id);
-      setSelectedSessionDetail(nextSessionDetail);
       setMemoryForSession(response.session_id, {
         working_memory: response.working_memory || null,
         session_digest: response.session_digest || null,
@@ -81,22 +72,25 @@ export function createChatController({
         debug: buildAssistantDebug(response),
       });
 
+      await refreshSessions({
+        silent: true,
+        forceMessages: true,
+        forceSummary: true,
+      });
+
       showTransientNotice(
         "chat",
-        `消息已发送，当前上下文解析结果为 ${getAccessModeLabel(response.context_scope)}。`,
+        `\u6d88\u606f\u5df2\u53d1\u9001\uff0c\u5f53\u524d\u4e0a\u4e0b\u6587\u89e3\u6790\u7ed3\u679c\u4e3a ${getAccessModeLabel(response.context_scope)}\u3002`,
         "success",
       );
-      await refreshSessions({ silent: true, loadMessages: false });
     } catch (error) {
-      appendMessage(stateBeforeSend.currentSessionId, {
-        role: "system",
-        content: `请求失败：${error instanceof Error ? error.message : "未知错误"}`,
-        timestamp: Date.now(),
-        sources: [],
-      });
+      removeMessage(stateBeforeSend.currentSessionId, optimisticMessage);
+      elements.messageInput.value = message;
+      elements.messageInput.dispatchEvent(new Event("input", { bubbles: true }));
+      elements.messageInput.focus();
       setNotice(
         "chat",
-        `聊天请求失败：${error instanceof Error ? error.message : "未知错误"}`,
+        `\u804a\u5929\u8bf7\u6c42\u5931\u8d25\uff1a${error instanceof Error ? error.message : "\u672a\u77e5\u9519\u8bef"}`,
         "danger",
       );
     } finally {

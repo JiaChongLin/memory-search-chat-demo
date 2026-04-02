@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Optional
@@ -82,6 +83,7 @@ class MemoryService:
         session_id: str,
         user_message: str,
         assistant_message: str,
+        assistant_sources: Optional[list[dict[str, Optional[str]]]] = None,
     ) -> MemorySnapshot:
         try:
             session = self._get_or_create_session(session_id)
@@ -93,12 +95,14 @@ class MemoryService:
                         session_id=session_id,
                         role="user",
                         content=user_message,
+                        sources_json=self._dump_sources([]),
                         created_at=turn_timestamp,
                     ),
                     ChatMessage(
                         session_id=session_id,
                         role="assistant",
                         content=assistant_message,
+                        sources_json=self._dump_sources(assistant_sources or []),
                         created_at=turn_timestamp,
                     ),
                 ]
@@ -297,6 +301,28 @@ class MemoryService:
         else:
             role = message.role
         return MemoryMessage(role=role, content=message.content)
+
+    def _dump_sources(self, sources: list[dict[str, Optional[str]]]) -> str:
+        normalized: list[dict[str, Optional[str]]] = []
+        for item in sources:
+            if not isinstance(item, dict):
+                continue
+
+            title = item.get("title")
+            url = item.get("url")
+            if not isinstance(title, str) or not isinstance(url, str):
+                continue
+
+            snippet = item.get("snippet")
+            normalized.append(
+                {
+                    "title": title,
+                    "url": url,
+                    "snippet": snippet if isinstance(snippet, str) else None,
+                }
+            )
+
+        return json.dumps(normalized, ensure_ascii=False)
 
     def _build_working_memory(self, messages: list[MemoryMessage]) -> Optional[str]:
         if len(messages) <= self._short_window:

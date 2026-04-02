@@ -53,7 +53,7 @@ function buildDebugItems(message) {
   const debug = message.debug;
   const items = [
     { label: `解析结果：${getAccessModeLabel(debug.context_scope || "open")}`, variant: "scope" },
-    { label: `Related session_digest ${debug.related_session_digest_count ?? 0}`, variant: "soft" },
+    { label: `关联 session_digest ${debug.related_session_digest_count ?? 0}`, variant: "soft" },
     {
       label: getModelUsageLabel(debug.used_live_model),
       variant: debug.used_live_model ? "success" : "warning",
@@ -205,7 +205,7 @@ function renderMemory(state, elements) {
     elements.workingMemoryBadge,
     memory?.working_memory || null,
     hasSession
-      ? "No working_memory is available for this session yet. It is a runtime handoff object for continuing the current session, not the message history itself."
+      ? "\u5f53\u524d\u8fd8\u6ca1\u6709 working_memory\uff08\u8fd0\u884c\u65f6\u8854\u63a5\u8bb0\u5fc6\uff09\u3002\u5b83\u7528\u4e8e\u5ef6\u7eed\u5f53\u524d\u4f1a\u8bdd\uff0c\u4e0d\u7b49\u4e8e\u6d88\u606f\u5386\u53f2\u3002"
       : "当前没有选中会话。请先在左侧导航中创建或选择会话。",
   );
 
@@ -214,7 +214,7 @@ function renderMemory(state, elements) {
     elements.sessionDigestBadge,
     memory?.session_digest || null,
     hasSession
-      ? "No session_digest is available for this session yet. It is a cross-session readable digest, not the message history itself."
+      ? "\u5f53\u524d\u8fd8\u6ca1\u6709 session_digest\uff08\u8de8\u4f1a\u8bdd\u6458\u8981\uff09\u3002\u5b83\u7528\u4e8e\u8de8\u4f1a\u8bdd\u5f15\u7528\uff0c\u4e0d\u7b49\u4e8e\u6d88\u606f\u5386\u53f2\u3002"
       : "当前没有选中会话。请先在左侧导航中创建或选择会话。",
   );
 }
@@ -246,7 +246,7 @@ function renderComposerState(state, elements) {
   }
 
   elements.composerHint.textContent = "Shift + Enter 换行，Enter 发送。";
-  elements.messageInput.placeholder = "Continue chatting in the current session and observe working_memory, session_digest, sources, and debug fields.";
+  elements.messageInput.placeholder = "\u7ee7\u7eed\u5f53\u524d\u4f1a\u8bdd\uff0c\u89c2\u5bdf working_memory\u3001session_digest\u3001sources \u548c debug \u5b57\u6bb5\u53d8\u5316\u3002";
 }
 
 function renderNotice(state, elements) {

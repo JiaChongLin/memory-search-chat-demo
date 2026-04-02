@@ -23,7 +23,7 @@ from backend.app.services.memory_service import MemoryMessage, MemoryService
 
 
 MAX_RELATED_SESSION_DIGESTS = 8
-DEFAULT_SESSION_TITLE = "?????"
+DEFAULT_SESSION_TITLE = "\u672a\u547d\u540d\u4f1a\u8bdd"
 
 
 @dataclass

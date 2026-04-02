@@ -5,7 +5,7 @@ export function formatErrorMessage(error) {
   if (error instanceof Error && error.message) {
     return error.message;
   }
-  return "Unknown error";
+  return "\u672a\u77e5\u9519\u8bef";
 }
 
 export function parseOptionalProjectId(value) {
@@ -34,12 +34,33 @@ export function buildAssistantDebug(responseData) {
   };
 }
 
+function mapApiSource(source) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const title = typeof source.title === "string" ? source.title : "";
+  const url = typeof source.url === "string" ? source.url : "";
+  if (!title || !url) {
+    return null;
+  }
+
+  return {
+    title,
+    url,
+    snippet: typeof source.snippet === "string" ? source.snippet : null,
+  };
+}
+
 export function mapApiMessage(message) {
+  const rawSources = Array.isArray(message.sources) ? message.sources : [];
+  const sources = rawSources.map((source) => mapApiSource(source)).filter(Boolean);
+
   return {
     role: message.role,
     content: message.content,
     timestamp: message.created_at,
-    sources: [],
+    sources,
   };
 }
 

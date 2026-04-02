@@ -570,3 +570,55 @@ def test_project_service_can_create_project_against_legacy_projects_table() -> N
         engine.dispose()
         if db_path.exists():
             db_path.unlink()
+
+
+def test_sqlite_migration_adds_chat_message_sources_column(monkeypatch) -> None:
+    temp_dir = Path("tests/.tmp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    db_path = temp_dir / f"chat_message_sources_migration_{uuid4().hex}.db"
+
+    local_engine = create_engine(
+        f"sqlite:///{db_path.as_posix()}",
+        connect_args={"check_same_thread": False},
+    )
+
+    with local_engine.begin() as connection:
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE chat_sessions (
+                id VARCHAR(64) PRIMARY KEY
+            )
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE chat_messages (
+                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                session_id VARCHAR(64) NOT NULL,
+                role VARCHAR(20) NOT NULL,
+                content TEXT NOT NULL,
+                created_at DATETIME NOT NULL,
+                FOREIGN KEY(session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
+            )
+            """
+        )
+
+    try:
+        from backend.app.db import session as session_module
+
+        monkeypatch.setattr(session_module, "engine", local_engine)
+        monkeypatch.setattr(
+            session_module,
+            "settings",
+            build_settings(database_url=f"sqlite:///{db_path.as_posix()}"),
+        )
+        session_module._migrate_sqlite_schema()
+
+        inspector = inspect(local_engine)
+        columns = {column["name"] for column in inspector.get_columns("chat_messages")}
+
+        assert "sources_json" in columns
+    finally:
+        local_engine.dispose()
+        if db_path.exists():
+            db_path.unlink()

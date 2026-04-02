@@ -12,7 +12,6 @@ from backend.app.db.session import init_db
 
 settings = get_settings()
 
-# 开发阶段先放开常见本地前端地址，方便直接联调。
 DEV_CORS_ORIGINS = [
     "http://localhost:5500",
     "http://127.0.0.1:5500",
@@ -23,7 +22,6 @@ DEV_CORS_ORIGINS = [
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # 启动时自动建表，保证本地开发开箱即用。
     init_db()
     yield
 
@@ -62,7 +60,7 @@ def build_error_response(
 
 @app.exception_handler(HTTPException)
 async def handle_http_exception(_: Request, exc: HTTPException) -> JSONResponse:
-    detail = exc.detail if isinstance(exc.detail, str) else "请求处理失败。"
+    detail = exc.detail if isinstance(exc.detail, str) else "\u8bf7\u6c42\u5904\u7406\u5931\u8d25\u3002"
     return build_error_response(exc.status_code, "http_error", detail)
 
 
@@ -74,7 +72,7 @@ async def handle_validation_exception(
     return build_error_response(
         status.HTTP_422_UNPROCESSABLE_ENTITY,
         "validation_error",
-        "请求参数校验失败。",
+        "\u8bf7\u6c42\u53c2\u6570\u6821\u9a8c\u5931\u8d25\u3002",
     )
 
 
@@ -83,7 +81,7 @@ async def handle_unexpected_exception(_: Request, __: Exception) -> JSONResponse
     return build_error_response(
         status.HTTP_500_INTERNAL_SERVER_ERROR,
         "internal_error",
-        "服务器处理请求时发生异常。",
+        "\u670d\u52a1\u5668\u5904\u7406\u8bf7\u6c42\u65f6\u53d1\u751f\u5f02\u5e38\u3002",
     )
 
 

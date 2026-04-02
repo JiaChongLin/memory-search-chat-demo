@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -121,12 +122,47 @@ class ChatMessage(Base):
     )
     role: Mapped[str] = mapped_column(String(20))
     content: Mapped[str] = mapped_column(Text)
+    sources_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow,
     )
 
     session: Mapped["ChatSession"] = relationship(back_populates="messages")
+
+    @property
+    def sources(self) -> list[dict[str, Optional[str]]]:
+        if not self.sources_json:
+            return []
+
+        try:
+            payload = json.loads(self.sources_json)
+        except (TypeError, ValueError):
+            return []
+
+        if not isinstance(payload, list):
+            return []
+
+        normalized: list[dict[str, Optional[str]]] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+
+            title = item.get("title")
+            url = item.get("url")
+            if not isinstance(title, str) or not isinstance(url, str):
+                continue
+
+            snippet = item.get("snippet")
+            normalized.append(
+                {
+                    "title": title,
+                    "url": url,
+                    "snippet": snippet if isinstance(snippet, str) else None,
+                }
+            )
+
+        return normalized
 
 
 class SessionSummary(Base):
