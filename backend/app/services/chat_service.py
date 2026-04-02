@@ -55,10 +55,20 @@ class ChatService:
             search_results=search_results,
         )
 
+        response_sources = [
+            SearchSource(
+                title=result.title,
+                url=result.url,
+                snippet=result.snippet,
+            )
+            for result in search_results
+        ]
+
         memory_snapshot = self._memory_service.append_turn(
             session_id=session_id,
             user_message=payload.message,
             assistant_message=llm_reply.content,
+            assistant_sources=[source.model_dump() for source in response_sources],
         )
 
         session_title = None
@@ -83,14 +93,7 @@ class ChatService:
             fallback_reason=llm_reply.fallback_reason,
             search_triggered=search_triggered,
             search_used=bool(search_results),
-            sources=[
-                SearchSource(
-                    title=result.title,
-                    url=result.url,
-                    snippet=result.snippet,
-                )
-                for result in search_results
-            ],
+            sources=response_sources,
             context_scope=resolved_context.context_scope,
             related_session_digest_count=related_session_digest_count,
             related_summary_count=related_session_digest_count,

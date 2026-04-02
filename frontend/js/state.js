@@ -315,6 +315,14 @@ export function appendMessage(sessionId, message) {
   });
 }
 
+export function removeMessage(sessionId, targetMessage) {
+  const key = sessionId || DRAFT_SESSION_KEY;
+  commit((draft) => {
+    const current = Array.isArray(draft.messageMap[key]) ? draft.messageMap[key] : [];
+    draft.messageMap[key] = current.filter((message) => message !== targetMessage);
+  });
+}
+
 export function removeSessionData(sessionId) {
   if (!sessionId) {
     return;

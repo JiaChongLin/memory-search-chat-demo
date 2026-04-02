@@ -219,28 +219,33 @@ export function createProjectSessionController({
     }
   }
 
-  async function syncSelectedSessionDetail() {
+  async function syncSelectedSessionDetail(options = {}) {
     const state = getState();
-    if (!state.currentSessionId) {
-      return;
+    const sessionId = options.sessionId ?? state.currentSessionId;
+    if (!sessionId) {
+      return null;
     }
 
-    const matched = state.sessions.find((item) => item.id === state.currentSessionId);
-    if (matched) {
+    const matched = state.sessions.find((item) => item.id === sessionId) || null;
+    if (matched && !options.forceRemote) {
       setSelectedSessionDetail(matched);
-      return;
+      return matched;
     }
 
     try {
-      const detail = await getSession(getBaseUrl(), state.currentSessionId);
+      const detail = await getSession(getBaseUrl(), sessionId);
       setSelectedSessionDetail(detail);
+      return detail;
     } catch (error) {
       if (error.status === 404) {
-        removeSessionData(state.currentSessionId);
-        clearSessionSelection();
-        return;
+        removeSessionData(sessionId);
+        if (getState().currentSessionId === sessionId) {
+          clearSessionSelection();
+        }
+        return null;
       }
-      setNotice("sessions", `同步会话详情失败：${formatErrorMessage(error)}`, "warning");
+      setNotice("sessions", `\u540c\u6b65\u4f1a\u8bdd\u8be6\u60c5\u5931\u8d25\uff1a${formatErrorMessage(error)}`, "warning");
+      return matched;
     }
   }
 
@@ -530,8 +535,19 @@ export function createProjectSessionController({
     if (session) {
       syncProjectSelection(session.project_id);
     }
-    await ensureSessionMemoryState(sessionId, { force: true });
-    await ensureSessionMessages(sessionId, { force: false });
+
+    const detail = await syncSelectedSessionDetail({
+      sessionId,
+      forceRemote: true,
+    });
+    if (detail) {
+      syncProjectSelection(detail.project_id);
+    }
+
+    await Promise.all([
+      ensureSessionMemoryState(sessionId, { force: true }),
+      ensureSessionMessages(sessionId, { force: true }),
+    ]);
   }
 
   async function handleRenameSession() {

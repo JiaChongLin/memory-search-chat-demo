@@ -123,7 +123,7 @@ function renderSidebarProjectItem(state, project) {
             title="编辑项目"
             aria-label="编辑项目"
           >
-            ??
+            \u7f16\u8f91
           </button>
           ${
             isSelected
@@ -135,7 +135,7 @@ function renderSidebarProjectItem(state, project) {
                   title="删除项目"
                   aria-label="删除项目"
                 >
-                  ??
+                  \u5220\u9664
                 </button>
               `
               : ""
@@ -284,7 +284,7 @@ function renderCurrentSessionPanel(state, elements) {
       </div>
       <p class="detail-copy">${escapeHtml(getPrivacyHelpText(session.is_private))}</p>
       <div class="detail-meta stacked">
-        <span>?? ID?${escapeHtml(session.id)}</span>
+        <span>\u4f1a\u8bdd ID\uff1a${escapeHtml(session.id)}</span>
         <span>所属项目：${escapeHtml(project ? project.name : "无项目会话")}</span>
         <span>会话可见性：${escapeHtml(getPrivacyLabel(session.is_private))}</span>
         <span>消息数量：${escapeHtml(String(session.message_count ?? 0))}</span>
@@ -308,18 +308,18 @@ function renderCurrentSessionPanel(state, elements) {
       }
       ${
         project
-          ? `<p class="hint-text">当前项目 active stable facts：${activeStableFacts.length} 条。它们属于长期稳定信息层，不等于消息历史，也不等于会话摘要。</p>`
+          ? `<p class="hint-text">\u5f53\u524d\u9879\u76ee\u5df2\u542f\u7528 stable facts\uff1a${activeStableFacts.length} \u6761\u3002\u5b83\u4eec\u5c5e\u4e8e\u957f\u671f\u7a33\u5b9a\u4fe1\u606f\u5c42\uff0c\u4e0d\u7b49\u4e8e\u6d88\u606f\u5386\u53f2\uff0c\u4e5f\u4e0d\u7b49\u4e8e\u4f1a\u8bdd\u6458\u8981\u3002</p>`
           : '<p class="hint-text">当前会话没有项目容器，因此不会注入 stable facts。</p>'
       }
       <div class="inline-row action-stack">
         <button id="toggleSessionPrivacyButton" class="ghost-button" type="button">${session.is_private ? "设为共享" : "设为私密"}</button>
-        <button id="archiveSessionButton" class="ghost-button" type="button">??</button>
+        <button id="archiveSessionButton" class="ghost-button" type="button">\u5f52\u6863\u4f1a\u8bdd</button>
         <button id="deleteSessionButton" class="danger-button" type="button">删除会话</button>
       </div>
       <label class="field-label" for="moveProjectSelect">移动到项目</label>
       <div class="inline-row">
         <select id="moveProjectSelect" class="select-input"></select>
-        <button id="moveSessionButton" class="secondary-button" type="button">??</button>
+        <button id="moveSessionButton" class="secondary-button" type="button">\u79fb\u52a8\u4f1a\u8bdd</button>
       </div>
     </div>
   `;
@@ -411,7 +411,7 @@ function renderStableFactList(state, editingProject) {
 
   return facts
     .map((fact) => {
-      const statusBadge = fact.status === "active" ? badge("active", "success") : badge("archived", "warning");
+      const statusBadge = fact.status === "active" ? badge("\u542f\u7528\u4e2d", "success") : badge("\u5df2\u5f52\u6863", "warning");
       return `
         <article class="stable-fact-item ${fact.status === "archived" ? "is-archived" : ""}">
           <div class="mini-head compact">
@@ -470,7 +470,7 @@ function renderProjectModal(state, elements) {
   if (elements.projectStableFactsBadge) {
     elements.projectStableFactsBadge.className = `badge ${stableFactsEnabled ? "soft" : "neutral"}`;
     elements.projectStableFactsBadge.textContent = stableFactsEnabled
-      ? `${activeStableFacts.length} active / ${stableFacts.length} total`
+      ? `\u5df2\u542f\u7528 ${activeStableFacts.length} / \u5171 ${stableFacts.length}`
       : "创建后可用";
   }
   if (elements.projectStableFactsHint) {

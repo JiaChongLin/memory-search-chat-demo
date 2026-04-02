@@ -1,5 +1,8 @@
-﻿from fastapi.testclient import TestClient
+import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import select
+
+from backend.app.services.search_service import SearchResult, SearchService
 
 from backend.app.db.models import (
     ChatMessage,
@@ -278,6 +281,62 @@ def test_get_session_messages_returns_messages_in_order(client: TestClient) -> N
     assert [item["role"] for item in payload] == ["user", "assistant", "user", "assistant"]
     assert payload[0]["content"] == "first question"
     assert payload[2]["content"] == "second question"
+
+
+def test_get_session_messages_returns_persisted_assistant_sources(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_search(_: SearchService, __: str) -> list[SearchResult]:
+        return [
+            SearchResult(
+                title="Example News",
+                url="https://example.com/news",
+                snippet="Example snippet.",
+            )
+        ]
+
+    monkeypatch.setattr(SearchService, "search", fake_search)
+
+    response = client.post(
+        "/api/chat",
+        json={"message": "today latest ai news"},
+    )
+
+    assert response.status_code == 200
+    session_id = response.json()["session_id"]
+
+    history_response = client.get(f"/api/sessions/{session_id}/messages")
+
+    assert history_response.status_code == 200
+    payload = history_response.json()
+    assert payload[0]["role"] == "user"
+    assert payload[0]["sources"] == []
+    assert payload[1]["role"] == "assistant"
+    assert payload[1]["sources"] == [
+        {
+            "title": "Example News",
+            "url": "https://example.com/news",
+            "snippet": "Example snippet.",
+        }
+    ]
+
+
+def test_get_session_messages_defaults_sources_to_empty_list_for_legacy_rows(
+    client: TestClient,
+    session_local,
+) -> None:
+    session_id = client.post("/api/sessions", json={"title": "Legacy history"}).json()["id"]
+
+    with session_local() as db:
+        db.add(ChatMessage(session_id=session_id, role="assistant", content="legacy", sources_json=None))
+        db.commit()
+
+    response = client.get(f"/api/sessions/{session_id}/messages")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["sources"] == []
 
 
 def test_get_session_summary_returns_working_memory_and_session_digest(client: TestClient) -> None:

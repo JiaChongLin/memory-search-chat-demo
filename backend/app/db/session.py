@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections.abc import Generator
 
@@ -99,6 +99,15 @@ def _migrate_sqlite_schema() -> None:
         if "summary_updated_at" not in chat_session_columns:
             migration_statements.append(
                 "ALTER TABLE chat_sessions ADD COLUMN summary_updated_at DATETIME"
+            )
+
+    if inspector.has_table("chat_messages"):
+        chat_message_columns = {
+            column["name"] for column in inspector.get_columns("chat_messages")
+        }
+        if "sources_json" not in chat_message_columns:
+            migration_statements.append(
+                "ALTER TABLE chat_messages ADD COLUMN sources_json TEXT"
             )
 
     if inspector.has_table("session_summaries"):

@@ -16,7 +16,7 @@ A small chat demo focused on combining multi-turn conversation, session memory, 
 
 ## Current Data Semantics
 
-- `ChatMessage`: source of truth for real conversation history
+- `ChatMessage`: source of truth for real conversation history, including persisted assistant `sources`
 - `working_memory`: runtime handoff memory for continuing the current session
 - `session_digest`: cross-session readable session overview
 - `Project.instruction`: project-level model instruction and primary project prompt field
@@ -47,7 +47,6 @@ Notes:
 
 The frontend only keeps lightweight UI state in `localStorage`:
 
-- `backendBaseUrl`
 - `currentProjectId`
 - `currentSessionId`
 - sidebar expand/collapse state
@@ -56,13 +55,15 @@ After refresh, the frontend:
 
 1. restores the selected project/session IDs
 2. reloads project and session lists
-3. reloads full message history through `GET /api/sessions/{session_id}/messages`
-4. reloads `working_memory` and `session_digest` through `GET /api/sessions/{session_id}/summary` for debug display only
-5. reloads project stable facts on demand when the project modal opens
+3. reloads real message history from `ChatMessage` through `GET /api/sessions/{session_id}/messages`
+4. receives assistant `sources` together with those history messages, so source cards survive refresh and session switching
+5. reloads `working_memory` and `session_digest` through `GET /api/sessions/{session_id}/summary` for debug display only
+6. reloads project stable facts on demand when the project modal opens
 
 What it does not do:
 
 - it does not persist full message history in local frontend storage
+- it does not treat local optimistic chat appends as the final source of truth for history
 - it does not locally cache stable facts beyond current page state
 - it does not restore transient debug snapshots after refresh
 
